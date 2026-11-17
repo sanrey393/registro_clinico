@@ -9,6 +9,7 @@ import hashlib
 import binascii
 from datetime import datetime
 from core.security import SecurityVault
+from core.app_paths import app_dir
 
 class LocalCache:
     _instance = None
@@ -24,8 +25,8 @@ class LocalCache:
             return
 
         # Guardar la base de datos local en la carpeta del usuario o de la app
-        app_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        self.db_path = os.path.join(app_dir, "local_storage.db")
+        base_dir = app_dir()
+        self.db_path = os.path.join(base_dir, "local_storage.db")
         self.vault = SecurityVault()
         self._init_db()
         self._initialized = True

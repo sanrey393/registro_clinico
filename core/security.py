@@ -6,6 +6,7 @@ import sys
 import base64
 import hashlib
 from cryptography.fernet import Fernet
+from core.app_paths import app_dir
 
 class SecurityVault:
     _instance = None
@@ -22,8 +23,8 @@ class SecurityVault:
         Deriva una clave de cifrado única por máquina/instalación 
         usando identificadores del hardware o un salt local seguro.
         """
-        app_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        key_file = os.path.join(app_dir, ".vault.key")
+        base_dir = app_dir()
+        key_file = os.path.join(base_dir, ".vault.key")
 
         if os.path.exists(key_file):
             with open(key_file, "rb") as f:

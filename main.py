@@ -5,7 +5,8 @@ from ui.main_window import MainWindow
 
 def load_stylesheet(app):
     # Cargar los estilos desde el archivo QSS
-    style_path = os.path.join(os.path.dirname(__file__), "styles", "theme.qss")
+    from core.app_paths import resource_path
+    style_path = resource_path(os.path.join("styles", "theme.qss"))
     try:
         with open(style_path, "r", encoding="utf-8") as f:
             app.setStyleSheet(f.read())

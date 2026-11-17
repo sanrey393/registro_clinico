@@ -51,3 +51,29 @@ def load_app_env() -> str | None:
     load_dotenv()
     print("[WARN] No se encontró archivo .env en ninguna ubicación esperada.")
     return None
+
+
+def resource_path(relative_path: str) -> str:
+    """
+    Obtiene la ruta absoluta a un recurso estático (estilos, datos, iconos):
+    - En modo compilado: busca en _internal/<relative_path> o _MEIPASS/<relative_path>.
+    - En modo desarrollo: busca desde la raíz del proyecto.
+    """
+    if getattr(sys, "frozen", False):
+        base_internal = os.path.join(os.path.dirname(sys.executable), "_internal")
+        cand1 = os.path.join(base_internal, relative_path)
+        if os.path.exists(cand1):
+            return cand1
+        
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            cand2 = os.path.join(meipass, relative_path)
+            if os.path.exists(cand2):
+                return cand2
+
+        cand3 = os.path.join(os.path.dirname(sys.executable), relative_path)
+        if os.path.exists(cand3):
+            return cand3
+
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), relative_path)
+

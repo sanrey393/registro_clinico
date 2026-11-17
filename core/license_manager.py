@@ -7,6 +7,7 @@ import json
 import hashlib
 import binascii
 from datetime import datetime
+from core.app_paths import app_dir
 
 class LicenseManager:
     _instance = None
@@ -19,8 +20,8 @@ class LicenseManager:
         return cls._instance
 
     def _init_manager(self):
-        app_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        self.license_file = os.path.join(app_dir, ".license.dat")
+        base_dir = app_dir()
+        self.license_file = os.path.join(base_dir, ".license.dat")
         self.machine_id = self.get_machine_id()
 
     @classmethod

@@ -103,7 +103,8 @@ QPushButton#btnSecondary {
 QPushButton#btnSecondary:hover { background: #e2e8f0; color: #0f172a; }
 """
 
-_LOCAL_RECETAS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "recetas_guardadas.json")
+from core.app_paths import app_dir
+_LOCAL_RECETAS_FILE = os.path.join(app_dir(), "recetas_guardadas.json")
 
 
 class OnlineDrugSearchThread(QThread):
@@ -577,7 +578,7 @@ class PrescriptionsView(QWidget):
 
         # Si no hay pacientes en BD, intentar leer de local
         if not self._pacientes_cache:
-            p_local = os.path.join(os.path.dirname(os.path.dirname(__file__)), "pacientes_local.json")
+            p_local = os.path.join(app_dir(), "pacientes_local.json")
             if os.path.exists(p_local):
                 try:
                     with open(p_local, "r", encoding="utf-8") as f:

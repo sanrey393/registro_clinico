@@ -56,7 +56,9 @@ class MainWindow(QMainWindow):
 
     def _load_theme(self):
         import os
-        theme_file = "styles/theme_dark.qss" if self._is_dark_mode else "styles/theme_light.qss"
+        from core.app_paths import resource_path
+        theme_rel = "styles/theme_dark.qss" if self._is_dark_mode else "styles/theme_light.qss"
+        theme_file = resource_path(theme_rel)
         if os.path.exists(theme_file):
             with open(theme_file, "r", encoding="utf-8") as f:
                 self.setStyleSheet(f.read())
