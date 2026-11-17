@@ -16,7 +16,10 @@ def build():
         print("[ERROR] No se encontró main.py")
         sys.exit(1)
 
-    # 2. Configurar rutas de recursos a incluir
+    # 2. Configurar rutas de recursos a incluir DENTRO del paquete (_MEIPASS)
+    #    Solo se incluyen carpetas de datos estáticos (estilos, catálogos).
+    #    El .env y firebase_service_account.json NO se empaquetan dentro del binario;
+    #    se copian JUNTO al .exe después de compilar (ver paso 4).
     data_folders = [
         ("styles", "styles"),
         ("data", "data"),
@@ -27,15 +30,6 @@ def build():
         src_path = os.path.join(BASE_DIR, src)
         if os.path.exists(src_path):
             add_data_args.extend(["--add-data", f"{src_path};{dst}"])
-
-    # Incluir credenciales de Firebase si existen
-    sa_file = os.path.join(BASE_DIR, "firebase_service_account.json")
-    if os.path.exists(sa_file):
-        add_data_args.extend(["--add-data", f"{sa_file};."])
-
-    env_file = os.path.join(BASE_DIR, ".env")
-    if os.path.exists(env_file):
-        add_data_args.extend(["--add-data", f"{env_file};."])
 
     # 3. Argumentos para PyInstaller
     cmd = [
@@ -53,13 +47,25 @@ def build():
     print("\nEjecutando PyInstaller...")
     ret = subprocess.run(cmd)
 
-    if ret.returncode == 0:
-        print("\n[ÉXITO] Compilación completada con éxito.")
-        print(f"Los binarios ejecutables se encuentran en: {os.path.join(BASE_DIR, 'dist', 'SistemaClinico')}")
-    else:
+    if ret.returncode != 0:
         print("\n[ERROR] Falló la compilación.")
         sys.exit(ret.returncode)
 
+    # 4. Copiar archivos de configuración JUNTO al .exe en dist/SistemaClinico/
+    #    Así load_app_env() los encontrará en os.path.dirname(sys.executable)
+    dist_dir = os.path.join(BASE_DIR, "dist", "SistemaClinico")
+
+    for filename in [".env", "firebase_service_account.json"]:
+        src_file = os.path.join(BASE_DIR, filename)
+        dst_file = os.path.join(dist_dir, filename)
+        if os.path.exists(src_file):
+            shutil.copy2(src_file, dst_file)
+            print(f"[OK] {filename} copiado a dist/SistemaClinico/")
+        else:
+            print(f"[WARN] {filename} no encontrado — el sistema podría no autenticarse correctamente.")
+
+    print(f"\n[ÉXITO] Compilación completada.")
+    print(f"Distribución lista en: {dist_dir}")
+
 if __name__ == "__main__":
     build()
-

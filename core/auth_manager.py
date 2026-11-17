@@ -1,11 +1,11 @@
 import os
 import pyrebase
-from dotenv import load_dotenv
+from core.app_paths import load_app_env
 from core.google_auth_helper import GoogleAuthFlow
 from database.local_cache import LocalCache
 
-# Cargar variables de entorno desde el archivo .env
-load_dotenv()
+# Cargar variables de entorno desde el .env del programa (también si está instalado)
+load_app_env()
 
 # Configuración Firebase para el cliente (pyrebase4)
 firebase_config = {
@@ -18,9 +18,8 @@ firebase_config = {
     "databaseURL":       os.environ.get("FIREBASE_DATABASE_URL", ""),
 }
 
-# Credenciales de Google OAuth
-GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID", "")
-GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+# Nota: GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET se leen dinámicamente
+# dentro de sign_in_with_google() para garantizar que el .env ya fue cargado.
 
 class AuthManager:
     def __init__(self):
@@ -210,11 +209,16 @@ class AuthManager:
         Si es usuario nuevo, Firebase lo registra automáticamente.
         Returns: (success: bool, user_data | error_message)
         """
-        if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        # Leer credenciales en tiempo de ejecución (no al importar el módulo)
+        # para asegurar que load_app_env() ya procesó el .env correctamente.
+        google_client_id     = os.environ.get("GOOGLE_CLIENT_ID", "")
+        google_client_secret = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+
+        if not google_client_id or not google_client_secret:
             return False, "Google OAuth no está configurado. Revisa el archivo .env"
 
         api_key = firebase_config.get("apiKey", "")
-        flow = GoogleAuthFlow(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, api_key)
+        flow = GoogleAuthFlow(google_client_id, google_client_secret, api_key)
         success, result = flow.sign_in()
 
         if success:

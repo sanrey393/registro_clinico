@@ -30,6 +30,11 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 ; Copia todos los archivos generados por PyInstaller en dist\SistemaClinico
 Source: "dist\SistemaClinico\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Copia el archivo de configuracion de credenciales junto al ejecutable
+; IMPORTANTE: Asegurate de que .env tiene los valores reales antes de compilar el instalador
+Source: ".env"; DestDir: "{app}"; Flags: ignoreversion
+; Copia el archivo de cuenta de servicio de Firebase (Admin SDK)
+Source: "firebase_service_account.json"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
