@@ -1,0 +1,52 @@
+# Archivos de entorno y credenciales sensibles (¡NUNCA SUBIR A GITHUB!)
+.env
+*.env
+firebase_service_account.json
+service_account*.json
+credentials.json
+*.pem
+*.key
+.vault.key
+.license.dat
+keygen.py
+
+# Entornos virtuales de Python
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Bytecode y caché de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Registros y logs
+*.log
+launch.log
+
+# Archivos de compilación y empaquetado (PyInstaller / Inno Setup)
+build/
+dist/
+*.spec
+Output/
+
+# Archivos de configuración de IDEs y sistemas operativos
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Archivos temporales generados por el actualizador
+update_*.zip
+install_update.bat
+

@@ -1,0 +1,177 @@
+/* theme.qss - Estilo ultra-moderno para el sistema clínico */
+
+QWidget {
+    color: #333333;
+    font-family: "Segoe UI", "Inter", "Roboto", sans-serif;
+    font-size: 14px;
+}
+
+QWidget#loginBackground {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #e0eafc, stop:1 #cfdef3);
+}
+
+/* Modificadores para el formulario de login */
+#formContainer {
+    background-color: rgba(255, 255, 255, 0.95);
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+QLabel#titleLabel {
+    font-size: 28px;
+    font-weight: 800;
+    color: #1a2744;
+}
+
+QLabel#subtitleLabel {
+    color: #6c757d;
+    font-size: 14px;
+}
+
+QLineEdit, QComboBox {
+    background-color: #f8f9fa;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 0 16px;
+    font-size: 14px;
+    color: #495057;
+}
+
+QComboBox {
+    padding: 4px 10px;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #ffffff;
+    color: #1e293b;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    selection-background-color: #e0f2fe;
+    selection-color: #0284c7;
+    padding: 6px;
+}
+
+QComboBox QAbstractItemView::item {
+    min-height: 28px;
+    padding: 4px 8px;
+    color: #1e293b;
+}
+
+QLineEdit:focus {
+    border: 1.5px solid #4d9ef7;
+    background-color: #ffffff;
+}
+
+QPushButton#primaryButton {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4d9ef7, stop:1 #3275e5);
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: bold;
+}
+
+QPushButton#primaryButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #3275e5, stop:1 #285ec2);
+}
+
+QPushButton#primaryButton:pressed {
+    background: #285ec2;
+}
+
+/* Nuevos estilos para el Login */
+QLabel#errorLabel {
+    color: #e63946;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+QLabel#successLabel {
+    color: #2a9d8f;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+QLabel#countdownLabel {
+    color: #e63946;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+QPushButton#togglePasswordBtn {
+    background-color: transparent;
+    border: none;
+    color: #8c98a4;
+    font-size: 16px;
+}
+
+QPushButton#togglePasswordBtn:hover {
+    color: #4d9ef7;
+}
+
+QPushButton#togglePasswordBtn:checked {
+    color: #4d9ef7;
+}
+
+QCheckBox {
+    color: #6c757d;
+    font-size: 13px;
+    spacing: 8px;
+}
+
+QCheckBox::indicator {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    border: 1.5px solid #cbd5e1;
+    background-color: #ffffff;
+}
+
+QCheckBox::indicator:checked {
+    background-color: #4d9ef7;
+    border: 1.5px solid #4d9ef7;
+}
+
+QPushButton#forgotPasswordBtn {
+    color: #4d9ef7;
+    background: transparent;
+    border: none;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+QPushButton#forgotPasswordBtn:hover {
+    color: #3275e5;
+    text-decoration: underline;
+}
+
+QPushButton#googleButton {
+    background-color: #ffffff;
+    color: #3c4043;
+    border: 1px solid #dadce0;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+QPushButton#googleButton:hover {
+    background-color: #f8f9fa;
+    border-color: #c6c6c6;
+}
+
+QPushButton#googleButton:pressed {
+    background-color: #e8eaed;
+}
+
+QPushButton#linkButton {
+    background: transparent;
+    color: #4d9ef7;
+    border: none;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+QPushButton#linkButton:hover {
+    color: #3275e5;
+    text-decoration: underline;
+}

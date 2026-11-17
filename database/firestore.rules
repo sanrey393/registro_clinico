@@ -1,0 +1,65 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Función auxiliar: verifica si el usuario está autenticado en Firebase
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Función auxiliar: verifica si el usuario tiene rol de administrador
+    function isAdmin() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol == 'admin';
+    }
+
+    // Reglas para usuarios
+    match /usuarios/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+    }
+
+    // Reglas para datos clínicos de pacientes (Expedientes, Historias, Sesiones)
+    match /pacientes/{pacienteId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /historias_clinicas/{historiaId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /sesiones_clinicas/{sesionId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /prescripciones/{prescripcionId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /citas/{citaId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /facturas/{facturaId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Información de actualización del sistema (Lectura pública para chequear versión, solo admin escribe)
+    match /sistema/actualizacion {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Catálogos generales (Lectura para usuarios autenticados)
+    match /farmacos_catalogo/{farmacoId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /diagnosticos_catalogo/{diagId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+  }
+}
+

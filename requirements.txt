@@ -1,0 +1,21 @@
+# Sistema de Registro Clínico y Gestión Médica - Dependencias
+
+# Interfaz Gráfica
+PyQt6>=6.6.0
+
+# Base de datos y Autenticación en la Nube (Firebase)
+firebase-admin>=6.4.0
+Pyrebase4>=4.8.0
+python-dotenv>=1.0.0
+
+# Seguridad y Criptografía (Licenciamiento y Tokens)
+cryptography>=42.0.0
+
+# Generación de Reportes y Recetas Médicas en PDF
+reportlab>=4.0.0
+
+# Red y Peticiones HTTP
+requests>=2.31.0
+
+# Herramientas de Compilación (Opcional para desarrollo)
+pyinstaller>=6.0.0

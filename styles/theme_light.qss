@@ -1,0 +1,277 @@
+/* theme_light.qss - Estilo claro para el sistema clínico */
+
+QWidget {
+    color: #333333;
+    font-family: "Segoe UI", "Inter", "Roboto", sans-serif;
+    font-size: 14px;
+}
+
+QWidget#loginBackground {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #e0eafc, stop:1 #cfdef3);
+}
+
+/* Formularios y Paneles */
+#formContainer, QWidget#rightPanel {
+    background-color: rgba(255, 255, 255, 0.95);
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+QLabel#titleLabel {
+    font-size: 28px;
+    font-weight: 800;
+    color: #1a2744;
+}
+
+QLabel#subtitleLabel {
+    color: #6c757d;
+    font-size: 14px;
+}
+
+QLineEdit, QTextEdit, QDoubleSpinBox, QDateEdit, QTimeEdit, QComboBox {
+    background-color: #f8f9fa;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 0 16px;
+    font-size: 14px;
+    color: #495057;
+}
+
+QComboBox {
+    padding: 4px 10px;
+    min-height: 28px;
+}
+
+QComboBox::drop-down {
+    border: none;
+    width: 20px;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #ffffff;
+    color: #1e293b;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    selection-background-color: #e0f2fe;
+    selection-color: #0284c7;
+    padding: 6px;
+    outline: none;
+}
+
+QComboBox QAbstractItemView::item {
+    min-height: 28px;
+    padding: 4px 10px;
+    color: #1e293b;
+}
+
+QComboBox QAbstractItemView::item:hover,
+QComboBox QAbstractItemView::item:selected {
+    background-color: #e0f2fe;
+    color: #0284c7;
+}
+
+QTextEdit { padding: 10px; }
+
+QLineEdit:focus, QTextEdit:focus, QDoubleSpinBox:focus, QDateEdit:focus, QTimeEdit:focus {
+    border: 1.5px solid #4d9ef7;
+    background-color: #ffffff;
+}
+
+/* Botones principales */
+QPushButton#primaryButton {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4d9ef7, stop:1 #3275e5);
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: bold;
+}
+QPushButton#primaryButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #3275e5, stop:1 #285ec2);
+}
+QPushButton#primaryButton:pressed {
+    background: #285ec2;
+}
+
+/* Feedback */
+QLabel#errorLabel, QLabel#countdownLabel {
+    color: #e63946;
+    font-size: 13px;
+    font-weight: bold;
+}
+QLabel#successLabel {
+    color: #2a9d8f;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+/* Checkboxes y botones de icono */
+QPushButton#togglePasswordBtn {
+    background-color: transparent;
+    border: none;
+    color: #8c98a4;
+    font-size: 16px;
+}
+QPushButton#togglePasswordBtn:hover, QPushButton#togglePasswordBtn:checked {
+    color: #4d9ef7;
+}
+
+QCheckBox {
+    color: #6c757d;
+    font-size: 13px;
+}
+QCheckBox::indicator {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    border: 1.5px solid #cbd5e1;
+    background-color: #ffffff;
+}
+QCheckBox::indicator:checked {
+    background-color: #4d9ef7;
+    border: 1.5px solid #4d9ef7;
+}
+
+/* Links */
+QPushButton#forgotPasswordBtn, QPushButton#linkButton {
+    color: #4d9ef7;
+    background: transparent;
+    border: none;
+    font-size: 13px;
+    font-weight: 500;
+}
+QPushButton#forgotPasswordBtn:hover, QPushButton#linkButton:hover {
+    color: #3275e5;
+    text-decoration: underline;
+}
+
+QPushButton#googleButton {
+    background-color: #ffffff;
+    color: #3c4043;
+    border: 1px solid #dadce0;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+}
+QPushButton#googleButton:hover { background-color: #f8f9fa; border-color: #c6c6c6; }
+QPushButton#googleButton:pressed { background-color: #e8eaed; }
+
+/* Dashboard Generales */
+QWidget#dashboardMain { background: #f0f3f8; }
+QWidget#homeWidget { background: #f0f3f8; }
+
+QFrame#topbar {
+    background: #ffffff;
+    border-bottom: 1px solid #e0e4ed;
+}
+QLabel#topbarTitle { color: #1a2744; font-weight: bold; font-size: 15px; }
+
+QPushButton#logoutBtn {
+    background: transparent;
+    color: #dc3545;
+    border: 1px solid #dc3545;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: normal;
+}
+QPushButton#logoutBtn:hover { background: #dc3545; color: white; }
+
+/* Sidebar */
+QFrame#sidebar {
+    background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #1a2744, stop:1 #0f1729);
+    border-right: 1px solid #243054;
+}
+
+/* Tablas */
+QTableWidget {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    gridline-color: transparent;
+    font-size: 14px;
+    alternate-background-color: #f8fafc;
+    color: #333333;
+}
+QHeaderView::section {
+    background-color: #f1f5f9;
+    color: #475569;
+    font-weight: bold;
+    border: none;
+    padding: 10px;
+    border-bottom: 2px solid #cbd5e1;
+}
+QTableWidget::item {
+    padding: 8px;
+    border-bottom: 1px solid #f1f5f9;
+}
+QTableWidget::item:selected {
+    background-color: #e0f2fe;
+    color: #0369a1;
+}
+
+/* ======================================================
+   Barra de Menú
+   ====================================================== */
+
+QMenuBar {
+    background-color: #ffffff;
+    border-bottom: 1px solid #dee2e6;
+    padding: 2px 4px;
+    font-size: 13px;
+    font-family: "Segoe UI", "Inter", sans-serif;
+    color: #2c3e50;
+    spacing: 2px;
+}
+
+QMenuBar::item {
+    background: transparent;
+    padding: 6px 14px;
+    border-radius: 5px;
+    color: #2c3e50;
+}
+
+QMenuBar::item:selected {
+    background: #e8f0fe;
+    color: #1a73e8;
+}
+
+QMenuBar::item:pressed {
+    background: #d2e3fc;
+    color: #1a73e8;
+}
+
+QMenu {
+    background-color: #ffffff;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 6px 0px;
+    font-size: 13px;
+    color: #2c3e50;
+}
+
+QMenu::item {
+    padding: 7px 32px 7px 20px;
+    background: transparent;
+    border-radius: 4px;
+    margin: 1px 4px;
+}
+
+QMenu::item:selected {
+    background: #e8f0fe;
+    color: #1a73e8;
+}
+
+QMenu::item:disabled {
+    color: #adb5bd;
+}
+
+QMenu::separator {
+    height: 1px;
+    background: #e9ecef;
+    margin: 4px 12px;
+}
+
+QMenu::indicator {
+    width: 16px;
+    height: 16px;
+}
