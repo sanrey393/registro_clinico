@@ -1,9 +1,9 @@
 import os
 import firebase_admin
 from firebase_admin import credentials, firestore
-from dotenv import load_dotenv
+from core.app_paths import app_dir, load_app_env
 
-load_dotenv()
+load_app_env()
 
 class FirebaseManager:
     """
@@ -36,10 +36,7 @@ class FirebaseManager:
             return
 
         self._db = None
-        service_account_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)),
-            "firebase_service_account.json"
-        )
+        service_account_path = os.path.join(app_dir(), "firebase_service_account.json")
 
         if os.path.exists(service_account_path):
             try:

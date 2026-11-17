@@ -50,3 +50,6 @@ desktop.ini
 update_*.zip
 install_update.bat
 
+
+*.db
+local_storage.db
