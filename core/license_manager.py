@@ -27,18 +27,45 @@ class LicenseManager:
     @classmethod
     def get_machine_id(cls) -> str:
         """
-        Obtiene un identificador único del hardware físico y Windows (MachineGuid + CPU).
-        No requiere privilegios de administrador ni comandos externos como wmic.
+        Obtiene un identificador único del hardware físico, compatible con:
+        1. Linux mediante Wine (lee Z:\\etc\\machine-id mapeado automáticamente por Wine)
+        2. Linux nativo (lee /etc/machine-id o /var/lib/dbus/machine-id)
+        3. Windows nativo (lee MachineGuid del registro de Windows)
+        No requiere privilegios de administrador ni comandos externos.
         """
-        guid = "DEFAULT_SYSTEM_GUID"
-        if sys.platform == "win32":
+        guid = ""
+
+        # 1. Intentar leer machine-id de Linux (ya sea nativo o a través de la unidad Z:\ de Wine)
+        linux_id_paths = [
+            r"Z:\etc\machine-id",
+            r"Z:\var\lib\dbus\machine-id",
+            "/etc/machine-id",
+            "/var/lib/dbus/machine-id"
+        ]
+        for p in linux_id_paths:
+            try:
+                if os.path.exists(p):
+                    with open(p, "r", encoding="utf-8") as f:
+                        val = f.read().strip()
+                        if val:
+                            guid = val
+                            break
+            except Exception:
+                pass
+
+        # 2. Si no se detectó entorno Linux/Wine, consultar el registro de Windows
+        if not guid and sys.platform == "win32":
             try:
                 import winreg
                 key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography")
                 guid, _ = winreg.QueryValueEx(key, "MachineGuid")
                 winreg.CloseKey(key)
             except Exception:
-                guid = os.environ.get("COMPUTERNAME", "UNKNOWN_PC")
+                pass
+
+        # 3. Fallback seguro a variables de entorno de red/host
+        if not guid or guid == "DEFAULT_SYSTEM_GUID":
+            guid = os.environ.get("COMPUTERNAME") or os.environ.get("HOSTNAME") or "DEFAULT_SYSTEM_GUID"
 
         cpu = os.environ.get("PROCESSOR_IDENTIFIER", "CPU_GENERIC")
         username = os.environ.get("USERNAME", "")
