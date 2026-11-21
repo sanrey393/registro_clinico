@@ -35,6 +35,8 @@ Source: "dist\SistemaClinico\*"; DestDir: "{app}"; Flags: ignoreversion recurses
 Source: ".env"; DestDir: "{app}"; Flags: ignoreversion
 ; Copia el archivo de cuenta de servicio de Firebase (Admin SDK)
 Source: "firebase_service_account.json"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+; Copia el archivo de version para el modulo de actualizacion
+Source: "version.json"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
