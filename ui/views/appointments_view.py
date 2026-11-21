@@ -514,6 +514,8 @@ class AppointmentsView(QWidget):
                 self.db._db.collection("citas").document(self._cita_id).update(datos)
                 QMessageBox.information(self, "✅", "Cita actualizada.")
             else:
+                # Inyectar user_id del médico en sesión
+                datos["user_id"] = self.db.get_current_user_id()
                 if hasattr(self.db, "crear_cita"):
                     self.db.crear_cita(datos)
                 else:
