@@ -104,7 +104,8 @@ class ClinicalSessionsView(QWidget):
         self._pacientes_cache = []
         self.setStyleSheet(STYLE)
         self.setup_ui()
-        self.load_data()
+        if hasattr(self.db, "get_current_user_id") and self.db.get_current_user_id():
+            self.load_data()
 
     def focus_new_form(self):
         self.clear_form()
@@ -477,7 +478,14 @@ class ClinicalSessionsView(QWidget):
                 QMessageBox.information(self, "✅ Éxito", "Sesión actualizada correctamente.")
             else:
                 # Inyectar user_id del médico en sesión
-                datos["user_id"] = self.db.get_current_user_id()
+                uid = self.db.get_current_user_id()
+                if not uid:
+                    try:
+                        from core.auth_manager import AuthManager
+                        uid = AuthManager().get_uid()
+                    except Exception:
+                        pass
+                datos["user_id"] = uid or ""
                 if hasattr(self.db, "crear_sesion"):
                     self.db.crear_sesion(datos)
                 else:
