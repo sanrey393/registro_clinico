@@ -13,6 +13,7 @@ class DashboardView(QWidget):
     Muestra información del usuario y accesos directos a los módulos clínicos.
     """
     logout_requested = pyqtSignal()
+    update_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -270,12 +271,35 @@ class DashboardView(QWidget):
 
         layout = QHBoxLayout(bar)
         layout.setContentsMargins(24, 0, 24, 0)
-        layout.setSpacing(15)
+        layout.setSpacing(12)
 
         title = QLabel("Sistema de Registro Clínico — Psicología")
         title.setObjectName("topbarTitle")
         layout.addWidget(title)
         layout.addStretch()
+
+        # ── Módulo de Actualización en la barra superior ──
+        self.update_btn = QPushButton("🔄 Buscar Actualización")
+        self.update_btn.setObjectName("updateBtn")
+        self.update_btn.setToolTip("Comprobar si hay nuevas versiones del sistema disponibles")
+        self.update_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.update_btn.setStyleSheet("""
+            QPushButton#updateBtn {
+                background: #f1f5f9;
+                color: #334155;
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                font-size: 12px;
+                font-weight: 600;
+                padding: 6px 14px;
+            }
+            QPushButton#updateBtn:hover {
+                background: #e2e8f0;
+                color: #0f172a;
+            }
+        """)
+        self.update_btn.clicked.connect(self._on_update_clicked)
+        layout.addWidget(self.update_btn)
 
         # Botón Toggle Theme
         self.theme_btn = QPushButton("🌙 Modo Oscuro")
@@ -305,6 +329,48 @@ class DashboardView(QWidget):
 
         self._is_dark = False
         return bar
+
+    def _on_update_clicked(self):
+        self.update_requested.emit()
+
+    def set_update_available(self, version: str, notes: str = ""):
+        """Modifica el módulo superior para avisar de forma llamativa que hay una nueva versión."""
+        self.update_btn.setText(f"✨ ¡Nueva versión v{version} disponible!")
+        self.update_btn.setToolTip(f"Versión {version} lista para descargar e instalar.\nHaz clic para ver detalles.")
+        self.update_btn.setStyleSheet("""
+            QPushButton#updateBtn {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #10b981, stop:1 #059669);
+                color: #ffffff;
+                border: 1px solid #047857;
+                border-radius: 6px;
+                font-size: 12px;
+                font-weight: bold;
+                padding: 6px 14px;
+            }
+            QPushButton#updateBtn:hover {
+                background: #047857;
+            }
+        """)
+
+    def set_system_up_to_date(self, current_version: str):
+        """Muestra en el módulo superior que el sistema está al día."""
+        self.update_btn.setText(f"✓ Sistema v{current_version}")
+        self.update_btn.setToolTip(f"Tu sistema está actualizado con la versión más reciente (v{current_version}).\nHaz clic para verificar de nuevo.")
+        self.update_btn.setStyleSheet("""
+            QPushButton#updateBtn {
+                background: #f1f5f9;
+                color: #475569;
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                font-size: 12px;
+                font-weight: 500;
+                padding: 6px 14px;
+            }
+            QPushButton#updateBtn:hover {
+                background: #e2e8f0;
+                color: #1e293b;
+            }
+        """)
         
     def _on_theme_toggled(self):
         self._is_dark = not self._is_dark
