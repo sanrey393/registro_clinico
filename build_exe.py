@@ -1,71 +1,136 @@
 # build_exe.py
-# Script automatizado para compilar el Sistema Clínico en un ejecutable de Windows con PyInstaller.
+# Script automatizado para compilar el Sistema Clinico en ejecutable Windows con PyInstaller
+# y crear el instalador con InnoSetup.
+#
+# Uso:
+#   python build_exe.py              -> Solo PyInstaller
+#   python build_exe.py --installer  -> PyInstaller + InnoSetup
+#
+# Requiere:
+#   - PyInstaller instalado: pip install pyinstaller
+#   - InnoSetup 6+ instalado en la ruta por defecto (solo para --installer)
 
 import os
 import sys
 import subprocess
 import shutil
+import argparse
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DIST_DIR = os.path.join(BASE_DIR, "dist", "SistemaClinico")
+PYTHON   = sys.executable
 
-def build():
-    print("=== Iniciando compilación de Sistema de Registro Clínico ===")
-    
-    # 1. Verificar archivos críticos
+ISCC_PATHS = [
+    r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+    r"C:\Program Files\Inno Setup 6\ISCC.exe",
+]
+
+# Archivos de configuracion que se copian JUNTO al .exe (no empaquetados adentro)
+CONFIG_FILES = [
+    ".env",
+    "firebase_service_account.json",
+    "version.json",
+]
+
+
+def build_exe():
+    print("=" * 60)
+    print("  Compilando Sistema de Registro Clinico con PyInstaller")
+    print("=" * 60)
+
     if not os.path.exists(os.path.join(BASE_DIR, "main.py")):
-        print("[ERROR] No se encontró main.py")
+        print("[ERROR] No se encontro main.py en:", BASE_DIR)
         sys.exit(1)
 
-    # 2. Configurar rutas de recursos a incluir DENTRO del paquete (_MEIPASS)
-    #    Solo se incluyen carpetas de datos estáticos (estilos, catálogos).
-    #    El .env y firebase_service_account.json NO se empaquetan dentro del binario;
-    #    se copian JUNTO al .exe después de compilar (ver paso 4).
-    data_folders = [
-        ("styles", "styles"),
-        ("data", "data"),
-    ]
+    spec_file = os.path.join(BASE_DIR, "SistemaClinico.spec")
+    if not os.path.exists(spec_file):
+        print("[ERROR] No se encontro SistemaClinico.spec")
+        sys.exit(1)
 
-    add_data_args = []
-    for src, dst in data_folders:
-        src_path = os.path.join(BASE_DIR, src)
-        if os.path.exists(src_path):
-            add_data_args.extend(["--add-data", f"{src_path};{dst}"])
-
-    # 3. Argumentos para PyInstaller
-    cmd = [
-        sys.executable,
-        "-m",
-        "PyInstaller",
-        "--noconfirm",
-        "--onedir",             # Crea una carpeta distribuible (ideal para Inno Setup)
-        "--windowed",           # Sin consola negra de CMD
-        "--name", "SistemaClinico",
-        *add_data_args,
-        os.path.join(BASE_DIR, "main.py")
-    ]
-
-    print("\nEjecutando PyInstaller...")
-    ret = subprocess.run(cmd)
+    cmd = [PYTHON, "-m", "PyInstaller", spec_file, "--noconfirm", "--clean"]
+    print("\nEjecutando:", " ".join(cmd))
+    ret = subprocess.run(cmd, cwd=BASE_DIR)
 
     if ret.returncode != 0:
-        print("\n[ERROR] Falló la compilación.")
+        print("\n[ERROR] Fallo la compilacion con PyInstaller.")
         sys.exit(ret.returncode)
 
-    # 4. Copiar archivos de configuración JUNTO al .exe en dist/SistemaClinico/
-    #    Así load_app_env() los encontrará en os.path.dirname(sys.executable)
-    dist_dir = os.path.join(BASE_DIR, "dist", "SistemaClinico")
-
-    for filename in [".env", "firebase_service_account.json", "version.json"]:
-        src_file = os.path.join(BASE_DIR, filename)
-        dst_file = os.path.join(dist_dir, filename)
-        if os.path.exists(src_file):
-            shutil.copy2(src_file, dst_file)
-            print(f"[OK] {filename} copiado a dist/SistemaClinico/")
+    # Copiar archivos de configuracion junto al .exe
+    print("\nCopiando archivos de configuracion a dist/SistemaClinico/ ...")
+    for filename in CONFIG_FILES:
+        src = os.path.join(BASE_DIR, filename)
+        dst = os.path.join(DIST_DIR, filename)
+        if os.path.exists(src):
+            shutil.copy2(src, dst)
+            print(f"  [OK] {filename}")
         else:
-            print(f"[WARN] {filename} no encontrado — el sistema podría no autenticarse correctamente.")
+            print(f"  [ADVERTENCIA] {filename} no encontrado - el sistema puede no autenticarse correctamente.")
 
-    print(f"\n[ÉXITO] Compilación completada.")
-    print(f"Distribución lista en: {dist_dir}")
+    size_mb = sum(
+        f.stat().st_size for f in __import__("pathlib").Path(DIST_DIR).rglob("*") if f.is_file()
+    ) / (1024 * 1024)
+
+    print(f"\n[EXITO] Compilacion completada.")
+    print(f"  Ubicacion: {DIST_DIR}")
+    print(f"  Tamano total: {size_mb:.1f} MB")
+
+
+def build_installer():
+    print("\n" + "=" * 60)
+    print("  Creando instalador con InnoSetup")
+    print("=" * 60)
+
+    iscc = None
+    for path in ISCC_PATHS:
+        if os.path.exists(path):
+            iscc = path
+            break
+
+    if not iscc:
+        print("[ERROR] InnoSetup no encontrado en las rutas habituales.")
+        print("        Descargalo en: https://jrsoftware.org/isdl.php")
+        print("        Instala y vuelve a ejecutar con --installer")
+        sys.exit(1)
+
+    iss_file = os.path.join(BASE_DIR, "installer_setup.iss")
+    if not os.path.exists(iss_file):
+        print("[ERROR] No se encontro installer_setup.iss")
+        sys.exit(1)
+
+    # Verificar que el exe compilado existe
+    exe_path = os.path.join(DIST_DIR, "SistemaClinico.exe")
+    if not os.path.exists(exe_path):
+        print("[ERROR] SistemaClinico.exe no encontrado en dist/. Compila primero con PyInstaller.")
+        sys.exit(1)
+
+    cmd = [iscc, iss_file]
+    print(f"\nEjecutando: {iscc} installer_setup.iss")
+    ret = subprocess.run(cmd, cwd=BASE_DIR)
+
+    if ret.returncode != 0:
+        print("\n[ERROR] Fallo la creacion del instalador.")
+        sys.exit(ret.returncode)
+
+    output_dir = os.path.join(BASE_DIR, "Output")
+    installers = list(__import__("pathlib").Path(output_dir).glob("*.exe")) if os.path.exists(output_dir) else []
+    if installers:
+        inst = installers[0]
+        size_mb = inst.stat().st_size / (1024 * 1024)
+        print(f"\n[EXITO] Instalador creado:")
+        print(f"  {inst}")
+        print(f"  Tamano: {size_mb:.1f} MB")
+    else:
+        print(f"\n[EXITO] Instalador creado en: {output_dir}")
+
 
 if __name__ == "__main__":
-    build()
+    parser = argparse.ArgumentParser(description="Compilar Sistema Clinico")
+    parser.add_argument("--installer", action="store_true", help="Tambien crear instalador con InnoSetup")
+    args = parser.parse_args()
+
+    build_exe()
+    if args.installer:
+        build_installer()
+    else:
+        print("\nTip: Ejecuta con --installer para crear tambien el instalador de Windows.")
+        print("     Requiere InnoSetup 6+ instalado.")
