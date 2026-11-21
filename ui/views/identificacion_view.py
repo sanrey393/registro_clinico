@@ -33,7 +33,8 @@ class IdentificacionView(QWidget):
         self._pacientes_cache = []
         self._paciente_id_actual = None
         self._setup_ui()
-        self._cargar_pacientes()
+        if hasattr(self.db, "get_current_user_id") and self.db.get_current_user_id():
+            self._cargar_pacientes()
 
     # ══════════════════════════════════════════════════════════════
     # UI Principal
@@ -571,7 +572,14 @@ class IdentificacionView(QWidget):
                 QMessageBox.information(self, "✅ Éxito", "Paciente actualizado correctamente.")
             else:
                 # Inyectar user_id del médico en sesión
-                datos["user_id"] = self.db.get_current_user_id()
+                uid = self.db.get_current_user_id()
+                if not uid:
+                    try:
+                        from core.auth_manager import AuthManager
+                        uid = AuthManager().get_uid()
+                    except Exception:
+                        pass
+                datos["user_id"] = uid or ""
                 self.db.crear_paciente(datos)
                 QMessageBox.information(self, "✅ Éxito", "Paciente registrado correctamente.")
 
