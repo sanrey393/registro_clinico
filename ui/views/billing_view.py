@@ -9,7 +9,8 @@ class BillingView(QWidget):
         super().__init__(parent)
         self.db = db_manager
         self.setup_ui()
-        self.load_data()
+        if hasattr(self.db, "get_current_user_id") and self.db.get_current_user_id():
+            self.load_data()
 
     def setup_ui(self):
         main_layout = QHBoxLayout(self)
@@ -84,7 +85,16 @@ class BillingView(QWidget):
         self.current_id = None
 
     def load_data(self):
-        pass
+        if not hasattr(self.db, "obtener_facturas"):
+            return
+        facturas = self.db.obtener_facturas()
+        self.table.setRowCount(0)
+        for i, f in enumerate(facturas):
+            self.table.insertRow(i)
+            self.table.setItem(i, 0, QTableWidgetItem(str(f.get("paciente_id", ""))))
+            self.table.setItem(i, 1, QTableWidgetItem(str(f.get("concepto", ""))))
+            self.table.setItem(i, 2, QTableWidgetItem(f"${f.get('monto', 0.0):.2f}"))
+            self.table.setItem(i, 3, QTableWidgetItem(str(f.get("estado", "pendiente"))))
 
     def clear_form(self):
         self.current_id = None
@@ -95,11 +105,20 @@ class BillingView(QWidget):
         self.btn_guardar.setText("Guardar Factura")
 
     def save_data(self):
+        uid = self.db.get_current_user_id() if hasattr(self.db, "get_current_user_id") else ""
+        if not uid:
+            try:
+                from core.auth_manager import AuthManager
+                uid = AuthManager().get_uid()
+            except Exception:
+                pass
+
         datos = {
             "paciente_id": self.input_paciente.text(),
             "concepto": self.input_concepto.text(),
             "monto": self.input_monto.value(),
-            "estado": self.input_estado.text() or "pendiente"
+            "estado": self.input_estado.text() or "pendiente",
+            "user_id": uid or ""
         }
         
         if not datos["paciente_id"]:
