@@ -315,29 +315,22 @@ class MainWindow(QMainWindow):
         menu_respaldo = QMenu("💾  Respaldo", self)
         self.app_menubar.addMenu(menu_respaldo)
 
-        act_hacer_respaldo = QAction("Crear Respaldo Ahora", self)
+        act_hacer_respaldo = QAction("Crear Respaldo Ahora...", self)
         act_hacer_respaldo.triggered.connect(self._hacer_respaldo)
         menu_respaldo.addAction(act_hacer_respaldo)
 
         act_restaurar = QAction("Restaurar desde Respaldo...", self)
-        act_restaurar.triggered.connect(
-            lambda: QMessageBox.information(self, "Restaurar",
-                "📦 Selecciona un archivo de respaldo para restaurar.\n"
-                "Función de restauración en desarrollo.")
-        )
+        act_restaurar.triggered.connect(self._restaurar_respaldo)
         menu_respaldo.addAction(act_restaurar)
 
         menu_respaldo.addSeparator()
 
-        act_respaldo_auto = QAction("Configurar Respaldo Automático", self)
-        act_respaldo_auto.triggered.connect(
-            lambda: QMessageBox.information(self, "Respaldo Automático",
-                "⏰ Configuración de respaldo automático en desarrollo.")
-        )
+        act_respaldo_auto = QAction("Configurar Respaldo Automático...", self)
+        act_respaldo_auto.triggered.connect(self._configurar_respaldo_auto)
         menu_respaldo.addAction(act_respaldo_auto)
 
-        act_exportar_datos = QAction("Exportar Todos los Datos", self)
-        act_exportar_datos.triggered.connect(self._abrir_reporte)
+        act_exportar_datos = QAction("Exportar Todos los Datos (CSV/Excel)...", self)
+        act_exportar_datos.triggered.connect(self._exportar_todos_los_datos)
         menu_respaldo.addAction(act_exportar_datos)
 
         # ── Ayuda / Actualizaciones ──────────────────────────────
@@ -417,22 +410,104 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Calculadora", "No se pudo abrir la calculadora.")
 
     def _hacer_respaldo(self):
-        """Genera un respaldo de los datos en Firebase y muestra confirmación."""
+        """Genera un archivo de respaldo seguro e integral del sistema."""
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        from core.backup_manager import BackupManager
         import datetime
-        try:
-            # Obtener datos y contar registros
-            pacientes = self.db.obtener_pacientes()
-            n = len(pacientes)
-            ts = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+        import os
+
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d_%H%M")
+        sug_name = f"Respaldo_Clinico_{now_str}.clinicabak"
+        def_dir = BackupManager.get_backup_config()["backup_dir"]
+        sug_path = os.path.join(def_dir, sug_name)
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Guardar Respaldo Clínico",
+            sug_path,
+            "Archivo de Respaldo Clínico (*.clinicabak);;Archivo ZIP (*.zip)"
+        )
+        if not path:
+            return
+
+        ok, msg_or_path, stats = BackupManager.crear_respaldo(path)
+        if ok:
             QMessageBox.information(
-                self, "✅ Respaldo Exitoso",
-                f"Respaldo creado exitosamente en Firebase.\n"
-                f"Registros respaldados: {n} paciente(s)\n"
-                f"Fecha: {ts}"
+                self,
+                "✅ Respaldo Creado Exitosamente",
+                f"El respaldo se ha generado y verificado correctamente.\n\n"
+                f"📁 Archivo: {os.path.basename(msg_or_path)}\n"
+                f"📍 Ubicación: {os.path.dirname(msg_or_path)}\n"
+                f"👥 Pacientes: {stats.get('pacientes', 0)}\n"
+                f"📅 Citas: {stats.get('citas', 0)}\n"
+                f"📋 Sesiones clínicas: {stats.get('sesiones', 0)}\n"
+                f"🧾 Facturas: {stats.get('facturas', 0)}\n"
+                f"🕒 Fecha: {stats.get('fecha', '')}"
             )
+        else:
+            QMessageBox.critical(self, "Error al Crear Respaldo", f"No se pudo completar el respaldo:\n{msg_or_path}")
+
+    def _restaurar_respaldo(self):
+        """Restaura la base de datos y archivos clínicos desde un archivo de respaldo."""
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        from core.backup_manager import BackupManager
+        import os
+
+        def_dir = BackupManager.get_backup_config()["backup_dir"]
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Seleccionar Archivo de Respaldo para Restaurar",
+            def_dir,
+            "Archivos de Respaldo (*.clinicabak *.zip *.db);;Todos los archivos (*.*)"
+        )
+        if not path:
+            return
+
+        confirm = QMessageBox.warning(
+            self,
+            "⚠️ Confirmar Restauración de Datos",
+            f"¿Estás seguro de que deseas restaurar los datos desde:\n{os.path.basename(path)}?\n\n"
+            "Se actualizará la base de datos local con los pacientes e historias del archivo seleccionado.\n"
+            "(El sistema creará automáticamente una copia de seguridad preventiva de tu base actual).",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        ok, msg = BackupManager.restaurar_respaldo(path)
+        if ok:
+            QMessageBox.information(
+                self,
+                "✅ Restauración Exitosa",
+                f"{msg}\n\nLos datos se han cargado y la base de datos local está lista."
+            )
+            # Refrescar módulos del dashboard para mostrar los nuevos registros cargados
+            if hasattr(self, "dashboard_view") and hasattr(self.dashboard_view, "setup_modules"):
+                self.dashboard_view.setup_modules(self.db)
+        else:
+            QMessageBox.critical(self, "Error en Restauración", f"No se pudo restaurar el archivo:\n{msg}")
+
+    def _configurar_respaldo_auto(self):
+        """Abre el diálogo de configuración de respaldo automático."""
+        from ui.dialogs.backup_dialogs import BackupConfigDialog
+        dlg = BackupConfigDialog(self)
+        dlg.exec()
+
+    def _exportar_todos_los_datos(self):
+        """Abre el diálogo para exportar todos los datos a Excel/CSV o JSON."""
+        from ui.dialogs.backup_dialogs import ExportDataDialog
+        dlg = ExportDataDialog(self)
+        dlg.exec()
+
+    def closeEvent(self, event):
+        """Al cerrar la aplicación, ejecuta el respaldo automático si está configurado."""
+        try:
+            from core.backup_manager import BackupManager
+            BackupManager.verificar_y_ejecutar_auto_backup()
         except Exception as e:
-            QMessageBox.warning(self, "Error de Respaldo",
-                f"No se pudo completar el respaldo:\n{e}")
+            print(f"[DEBUG] Auto backup en closeEvent: {e}")
+        event.accept()
 
 
 
@@ -529,19 +604,37 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(2000, lambda: self.check_for_updates(silent=True))
 
     def check_for_updates(self, silent: bool = False):
-        """Comprueba si hay actualizaciones del sistema."""
+        """Comprueba si hay actualizaciones del sistema y ofrece actualizar ahora o más adelante."""
+        if hasattr(self, "_pending_update") and self._pending_update:
+            version, url, notes = self._pending_update
+            from ui.dialogs.update_prompt_dialog import UpdatePromptDialog
+            dlg_prompt = UpdatePromptDialog(self, version, url, notes)
+            if dlg_prompt.exec() == QDialog.DialogCode.Accepted:
+                from ui.dialogs.update_dialog import UpdateDialog
+                dlg = UpdateDialog(self, version, url, notes)
+                dlg._start_download()
+                dlg.exec()
+            return
+
         if not silent:
             if hasattr(self, "dashboard_view") and hasattr(self.dashboard_view, "update_btn"):
                 self.dashboard_view.update_btn.setText("🔄 Buscando...")
 
         def _on_available(version, url, notes):
+            self._pending_update = (version, url, notes)
             if hasattr(self, "dashboard_view"):
                 self.dashboard_view.set_update_available(version, notes)
-            from ui.dialogs.update_dialog import UpdateDialog
-            dlg = UpdateDialog(self, version, url, notes)
-            dlg.exec()
+            
+            from ui.dialogs.update_prompt_dialog import UpdatePromptDialog
+            dlg_prompt = UpdatePromptDialog(self, version, url, notes)
+            if dlg_prompt.exec() == QDialog.DialogCode.Accepted:
+                from ui.dialogs.update_dialog import UpdateDialog
+                dlg = UpdateDialog(self, version, url, notes)
+                dlg._start_download()
+                dlg.exec()
 
         def _on_up_to_date(curr_version):
+            self._pending_update = None
             if hasattr(self, "dashboard_view"):
                 self.dashboard_view.set_system_up_to_date(curr_version)
             if not silent:
@@ -553,7 +646,7 @@ class MainWindow(QMainWindow):
                 )
 
         def _on_error(err):
-            if hasattr(self, "dashboard_view"):
+            if hasattr(self, "dashboard_view") and not getattr(self, "_pending_update", None):
                 self.dashboard_view.set_system_up_to_date("1.0.0")
             if not silent:
                 QMessageBox.warning(
