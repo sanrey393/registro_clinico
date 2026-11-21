@@ -4,12 +4,25 @@
 # PyInstaller spec con hidden imports completos para Firebase, PyQt6, cryptography, reportlab
 
 import os
+import sys
 BASE = r'c:\Users\kevin\.gemini\antigravity\scratch\registro_clinico'
+
+binaries = []
+# Python 3.13+ abi3t-compat support for cryptography (_rust.pyd)
+py_base = os.path.dirname(sys.executable)
+abi3t_dll = os.path.join(py_base, 'abi3t-compat', 'python3t.dll')
+if os.path.exists(abi3t_dll):
+    binaries.append((abi3t_dll, '.'))
+else:
+    # Check alternate location
+    alt_dll = r'C:\Users\kevin\AppData\Local\Programs\Python\Python315\abi3t-compat\python3t.dll'
+    if os.path.exists(alt_dll):
+        binaries.append((alt_dll, '.'))
 
 a = Analysis(
     [os.path.join(BASE, 'main.py')],
     pathex=[BASE],
-    binaries=[],
+    binaries=binaries,
     datas=[
         (os.path.join(BASE, 'styles'), 'styles'),
         (os.path.join(BASE, 'data'),   'data'),
