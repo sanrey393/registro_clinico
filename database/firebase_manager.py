@@ -123,11 +123,12 @@ class FirebaseManager:
         """Listar todos los pacientes pertenecientes al usuario actual."""
         if not self.is_configured():
             return []
+        uid = user_id or self.get_current_user_id()
+        if not uid:
+            print("[WARN] obtener_pacientes: sin usuario activo, retornando lista vacía.")
+            return []
         try:
-            uid = user_id or self.get_current_user_id()
-            query = self._db.collection("pacientes")
-            if uid:
-                query = query.where("user_id", "==", uid)
+            query = self._db.collection("pacientes").where("user_id", "==", uid)
             docs = query.stream()
             results = []
             for doc in docs:
@@ -161,11 +162,11 @@ class FirebaseManager:
         """Listar citas del usuario actual."""
         if not self.is_configured():
             return []
+        uid = user_id or self.get_current_user_id()
+        if not uid:
+            return []
         try:
-            uid = user_id or self.get_current_user_id()
-            query = self._db.collection("citas")
-            if uid:
-                query = query.where("user_id", "==", uid)
+            query = self._db.collection("citas").where("user_id", "==", uid)
             docs = query.stream()
             return [doc.to_dict() | {"id": doc.id} for doc in docs]
         except Exception as e:
@@ -223,18 +224,16 @@ class FirebaseManager:
     def obtener_sesiones(self, user_id=None):
         """Obtiene las sesiones clínicas del médico actual."""
         if not self.is_configured(): return []
+        uid = user_id or self.get_current_user_id()
+        if not uid:
+            return []
         try:
-            uid = user_id or self.get_current_user_id()
-            query = self._db.collection("sesiones")
-            if uid:
-                query = query.where("user_id", "==", uid)
+            query = self._db.collection("sesiones").where("user_id", "==", uid)
             docs = query.stream()
             res = [doc.to_dict() | {"id": doc.id} for doc in docs]
             if not res:
                 # Búsqueda de retrocompatibilidad en 'sesiones_clinicas'
-                q2 = self._db.collection("sesiones_clinicas")
-                if uid:
-                    q2 = q2.where("user_id", "==", uid)
+                q2 = self._db.collection("sesiones_clinicas").where("user_id", "==", uid)
                 res = [doc.to_dict() | {"id": doc.id} for doc in q2.stream()]
             return res
         except Exception as e:
@@ -296,11 +295,11 @@ class FirebaseManager:
 
     def obtener_facturas(self, user_id=None):
         if not self.is_configured(): return []
+        uid = user_id or self.get_current_user_id()
+        if not uid:
+            return []
         try:
-            uid = user_id or self.get_current_user_id()
-            query = self._db.collection("facturas")
-            if uid:
-                query = query.where("user_id", "==", uid)
+            query = self._db.collection("facturas").where("user_id", "==", uid)
             docs = query.stream()
             return [doc.to_dict() | {"id": doc.id} for doc in docs]
         except Exception as e:
@@ -340,11 +339,11 @@ class FirebaseManager:
 
     def obtener_todas_recetas(self, user_id=None):
         if not self.is_configured(): return []
+        uid = user_id or self.get_current_user_id()
+        if not uid:
+            return []
         try:
-            uid = user_id or self.get_current_user_id()
-            query = self._db.collection("recetas")
-            if uid:
-                query = query.where("user_id", "==", uid)
+            query = self._db.collection("recetas").where("user_id", "==", uid)
             docs = query.stream()
             return [doc.to_dict() | {"id": doc.id} for doc in docs]
         except Exception as e:
@@ -436,11 +435,11 @@ class FirebaseManager:
     def obtener_historias_clinicas(self, user_id=None):
         """Listar historias clínicas del usuario actual."""
         if not self.is_configured(): return []
+        uid = user_id or self.get_current_user_id()
+        if not uid:
+            return []
         try:
-            uid = user_id or self.get_current_user_id()
-            query = self._db.collection("historias_clinicas")
-            if uid:
-                query = query.where("user_id", "==", uid)
+            query = self._db.collection("historias_clinicas").where("user_id", "==", uid)
             docs = query.stream()
             return [doc.to_dict() | {"id": doc.id} for doc in docs]
         except Exception as e:
