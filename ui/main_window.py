@@ -37,6 +37,8 @@ class MainWindow(QMainWindow):
         self.auth        = AuthManager()
         self.db          = FirebaseManager()
         self._google_thread = None
+        from core.update_manager import UpdateManager
+        self.update_manager = UpdateManager(self)
 
         # Construir barra de menú
         self._build_menubar()
@@ -112,6 +114,11 @@ class MainWindow(QMainWindow):
                 "⚙️ Módulo de configuración en desarrollo.")
         )
         menu_archivo.addAction(act_config)
+
+        act_actualizar = QAction("🔄 Buscar Actualizaciones...", self)
+        act_actualizar.setShortcut("Ctrl+U")
+        act_actualizar.triggered.connect(lambda: self.check_for_updates(silent=False))
+        menu_archivo.addAction(act_actualizar)
 
         # ── Historias ─────────────────────────────────────────────
         menu_historias = QMenu("📋  Historias", self)
@@ -333,6 +340,20 @@ class MainWindow(QMainWindow):
         act_exportar_datos.triggered.connect(self._abrir_reporte)
         menu_respaldo.addAction(act_exportar_datos)
 
+        # ── Ayuda / Actualizaciones ──────────────────────────────
+        menu_ayuda = QMenu("❓  Ayuda", self)
+        self.app_menubar.addMenu(menu_ayuda)
+
+        act_check_update = QAction("Buscar Actualizaciones...", self)
+        act_check_update.triggered.connect(lambda: self.check_for_updates(silent=False))
+        menu_ayuda.addAction(act_check_update)
+
+        menu_ayuda.addSeparator()
+
+        act_acerca_de = QAction("Acerca de Registro Clínico", self)
+        act_acerca_de.triggered.connect(self._mostrar_acerca_de)
+        menu_ayuda.addAction(act_acerca_de)
+
         # ── Salida ───────────────────────────────────────────────
         menu_salida = QMenu("🚪  Salida", self)
         self.app_menubar.addMenu(menu_salida)
@@ -455,6 +476,7 @@ class MainWindow(QMainWindow):
         self.register_view.register_button.clicked.connect(self.handle_register)
         self.dashboard_view.logout_requested.connect(self.handle_logout)
         self.dashboard_view.theme_toggled.connect(self.toggle_theme)
+        self.dashboard_view.update_requested.connect(lambda: self.check_for_updates(silent=False))
 
     # ── Restaurar sesión al iniciar ──────────────────────────────
 
@@ -503,6 +525,63 @@ class MainWindow(QMainWindow):
         self.stacked_widget.setCurrentIndex(IDX_DASHBOARD)
         # Mostrar la barra de menú al entrar al dashboard
         self.app_menubar.setVisible(True)
+        # Comprobar actualizaciones silenciosamente tras entrar
+        QTimer.singleShot(2000, lambda: self.check_for_updates(silent=True))
+
+    def check_for_updates(self, silent: bool = False):
+        """Comprueba si hay actualizaciones del sistema."""
+        if not silent:
+            if hasattr(self, "dashboard_view") and hasattr(self.dashboard_view, "update_btn"):
+                self.dashboard_view.update_btn.setText("🔄 Buscando...")
+
+        def _on_available(version, url, notes):
+            if hasattr(self, "dashboard_view"):
+                self.dashboard_view.set_update_available(version, notes)
+            from ui.dialogs.update_dialog import UpdateDialog
+            dlg = UpdateDialog(self, version, url, notes)
+            dlg.exec()
+
+        def _on_up_to_date(curr_version):
+            if hasattr(self, "dashboard_view"):
+                self.dashboard_view.set_system_up_to_date(curr_version)
+            if not silent:
+                QMessageBox.information(
+                    self,
+                    "Sistema Actualizado",
+                    f"✅ ¡Tu sistema está utilizando la versión más reciente (v{curr_version})!\n\n"
+                    "No hay nuevas actualizaciones pendientes por el momento."
+                )
+
+        def _on_error(err):
+            if hasattr(self, "dashboard_view"):
+                self.dashboard_view.set_system_up_to_date("1.0.0")
+            if not silent:
+                QMessageBox.warning(
+                    self,
+                    "Comprobación de Actualizaciones",
+                    f"No se pudo comprobar si hay actualizaciones:\n{err}"
+                )
+
+        self.update_manager.check(
+            on_update_available=_on_available,
+            on_up_to_date=_on_up_to_date,
+            on_error=_on_error
+        )
+
+    def _mostrar_acerca_de(self):
+        """Muestra ventana de información del sistema y versión."""
+        from core.update_manager import CURRENT_VERSION
+        from core.license_manager import LicenseManager
+        mid = LicenseManager.get_machine_id()
+        QMessageBox.about(
+            self,
+            "Acerca de Registro Clínico",
+            f"<b>🏥 Sistema de Registro Clínico & Gestión Médica</b><br/>"
+            f"<b>Versión:</b> {CURRENT_VERSION}<br/>"
+            f"<b>Machine ID:</b> {mid}<br/>"
+            f"<b>Desarrollo:</b> Kevin — 2026/2027<br/><br/>"
+            f"Plataforma médica para historias clínicas, recetas, agenda y fármacos."
+        )
 
     # ── Login con Email/Password ─────────────────────────────────
 
@@ -524,12 +603,71 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(500, lambda: self._process_forgot_password(email))
         
     def _process_forgot_password(self, email):
-        success, msg = self.auth.send_password_reset_email(email)
+        res = self.auth.send_password_reset_email(email)
+        success = res[0]
+        msg = res[1]
+        reset_link = res[2] if len(res) > 2 else None
+
         self.login_view.set_ui_enabled(True)
         self.login_view.forgot_password_btn.setText("¿Olvidaste tu contraseña?")
         
         if success:
-            self.login_view.show_success("Te hemos enviado un correo con instrucciones para restablecer tu contraseña.")
+            self.login_view.show_success("Solicitud procesada. Revisa tu correo o abre el enlace.")
+            from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QApplication
+            from PyQt6.QtCore import QUrl
+            from PyQt6.QtGui import QDesktopServices
+
+            dlg = QDialog(self)
+            dlg.setWindowTitle("Recuperación de Contraseña")
+            dlg.setFixedWidth(460)
+            d_layout = QVBoxLayout(dlg)
+            d_layout.setSpacing(14)
+            d_layout.setContentsMargins(22, 20, 22, 20)
+
+            title_lbl = QLabel("<b>📧 Solicitud de Restablecimiento Enviada</b>")
+            title_lbl.setStyleSheet("font-size: 15px; color: #1e3a8a;")
+            d_layout.addWidget(title_lbl)
+
+            info_text = (
+                f"Hemos enviado las instrucciones a:<br/><b>{email}</b><br/><br/>"
+                "<span style='color: #b45309; font-weight: bold;'>⚠️ REVISA TU CARPETA DE SPAM / CORREO NO DESEADO</span><br/>"
+                "Los correos automáticos de Firebase frecuentemente son filtrados a Spam por Gmail, Outlook o Yahoo.<br/>"
+            )
+            lbl_info = QLabel(info_text)
+            lbl_info.setWordWrap(True)
+            lbl_info.setStyleSheet("font-size: 12px; color: #334155;")
+            d_layout.addWidget(lbl_info)
+
+            if reset_link:
+                direct_box = QLabel(
+                    "<b>🌐 Enlace Directo Seguro:</b><br/>"
+                    "Si no recibes el correo en tu bandeja o spam, puedes abrir este enlace oficial de Google para cambiar tu contraseña directamente en tu navegador:"
+                )
+                direct_box.setWordWrap(True)
+                direct_box.setStyleSheet("font-size: 11px; color: #0369a1; background: #f0f9ff; padding: 10px; border-radius: 6px; border: 1px solid #bae6fd;")
+                d_layout.addWidget(direct_box)
+
+                btn_box = QHBoxLayout()
+                btn_open = QPushButton("🌐 Abrir en Navegador")
+                btn_open.setStyleSheet("background: #0284c7; color: white; font-weight: bold; padding: 8px 14px; border-radius: 6px;")
+                btn_open.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(reset_link)))
+                btn_box.addWidget(btn_open)
+
+                btn_copy = QPushButton("📋 Copiar Enlace")
+                btn_copy.setStyleSheet("background: #f1f5f9; color: #334155; padding: 8px 14px; border-radius: 6px; border: 1px solid #cbd5e1;")
+                def _copiar():
+                    QApplication.clipboard().setText(reset_link)
+                    btn_copy.setText("✓ Copiado")
+                btn_copy.clicked.connect(_copiar)
+                btn_box.addWidget(btn_copy)
+                d_layout.addLayout(btn_box)
+
+            btn_close = QPushButton("Entendido")
+            btn_close.setStyleSheet("background: #2563eb; color: white; padding: 8px 16px; border-radius: 6px; font-weight: bold;")
+            btn_close.clicked.connect(dlg.accept)
+            d_layout.addWidget(btn_close)
+
+            dlg.exec()
         else:
             self.login_view.show_error(msg)
 
