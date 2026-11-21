@@ -162,6 +162,12 @@ class PrescriptionsView(QWidget):
 
         self._init_ui()
         self._cargar_catalogo_farmacos()
+        if hasattr(self.db, "get_current_user_id") and self.db.get_current_user_id():
+            self._cargar_pacientes()
+            self._cargar_recetas()
+
+    def load_data(self):
+        """Recarga pacientes y recetas desde la base de datos para el usuario médico en sesión."""
         self._cargar_pacientes()
         self._cargar_recetas()
 
@@ -738,6 +744,14 @@ class PrescriptionsView(QWidget):
                     break
             id_guardado = self._receta_actual_id
         else:
+            uid = self.db.get_current_user_id() if hasattr(self.db, "get_current_user_id") else ""
+            if not uid:
+                try:
+                    from core.auth_manager import AuthManager
+                    uid = AuthManager().get_uid()
+                except Exception:
+                    pass
+            receta_datos["user_id"] = uid or ""
             if self.db and hasattr(self.db, "crear_receta"):
                 id_guardado = self.db.crear_receta(dict(receta_datos))
             if not id_guardado:
