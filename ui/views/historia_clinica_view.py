@@ -1134,6 +1134,8 @@ class HistoriaClinicaView(QWidget):
                     self.db._db.collection("historias_clinicas").document(self._historia_id).update(datos)
                 QMessageBox.information(self, "✅ Éxito", "Historia clínica actualizada correctamente.")
             else:
+                # Inyectar user_id del médico en sesión
+                datos["user_id"] = self.db.get_current_user_id()
                 if hasattr(self.db, "crear_historia_clinica"):
                     nuevo_id = self.db.crear_historia_clinica(datos)
                 elif hasattr(self.db, "_db") and self.db._db:
