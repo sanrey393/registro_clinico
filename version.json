@@ -1,6 +1,6 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "release_date": "2026-11-21",
-  "download_url": "https://github.com/sanrey393/registro_clinico/releases/latest/download/SistemaClinico.zip",
-  "notes": "Versión 1.0.0 — Sistema Clínico con catálogo farmacológico, soporte Linux/Wine, recetas en PDF y módulo de actualización."
+  "download_url": "https://github.com/sanrey393/registro_clinico/releases/latest/download/Instalador_SistemaClinico_v1.1.0.exe",
+  "notes": "Version 1.1.0 - Aislamiento estricto de sesiones por usuario (multi-tenant), modulo de respaldo y restauracion, notificaciones de actualizacion automatica, catalogo farmacologico, recetas en PDF, facturacion y agenda de citas."
 }
