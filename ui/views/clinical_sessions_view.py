@@ -476,6 +476,8 @@ class ClinicalSessionsView(QWidget):
                 self.db._db.collection("sesiones").document(self._sesion_id).update(datos)
                 QMessageBox.information(self, "✅ Éxito", "Sesión actualizada correctamente.")
             else:
+                # Inyectar user_id del médico en sesión
+                datos["user_id"] = self.db.get_current_user_id()
                 if hasattr(self.db, "crear_sesion"):
                     self.db.crear_sesion(datos)
                 else:
