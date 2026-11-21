@@ -207,18 +207,15 @@ class LocalCache:
             except Exception:
                 pass
 
+        if not uid:
+            return []
+
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            if uid:
-                cursor.execute("""
-                    SELECT record_id, data_json FROM local_records
-                    WHERE collection_name = ? AND is_deleted = 0 AND (user_id = ? OR user_id = '')
-                """, (collection, uid))
-            else:
-                cursor.execute("""
-                    SELECT record_id, data_json FROM local_records
-                    WHERE collection_name = ? AND is_deleted = 0
-                """, (collection,))
+            cursor.execute("""
+                SELECT record_id, data_json FROM local_records
+                WHERE collection_name = ? AND is_deleted = 0 AND user_id = ?
+            """, (collection, uid))
             rows = cursor.fetchall()
             result = []
             
@@ -231,8 +228,8 @@ class LocalCache:
             for r in rows:
                 item = json.loads(r["data_json"])
                 item["id"] = r["record_id"]
-                # Filtro de seguridad: si el usuario especificado no coincide con el dueño del documento, excluir
-                if uid and item.get("user_id") and item.get("user_id") != uid:
+                # Filtro estricto de seguridad: el documento debe pertenecer al usuario
+                if item.get("user_id") and item.get("user_id") != uid:
                     continue
                 # Descifrar si vienen cifrados
                 for campo in campos_confidenciales:
