@@ -600,6 +600,13 @@ class MainWindow(QMainWindow):
         self.stacked_widget.setCurrentIndex(IDX_DASHBOARD)
         # Mostrar la barra de menú al entrar al dashboard
         self.app_menubar.setVisible(True)
+
+        # ── Fijar el UID del usuario en el gestor de BD para aislar sus datos ──
+        uid = self.auth.get_uid()
+        if uid:
+            self.db.set_current_user_id(uid)
+            print(f"[DEBUG] DB aislada para UID: {uid}")
+
         # Comprobar actualizaciones silenciosamente tras entrar
         QTimer.singleShot(2000, lambda: self.check_for_updates(silent=True))
 
@@ -951,6 +958,8 @@ class MainWindow(QMainWindow):
 
     def handle_logout(self):
         """Cerrar sesión y limpiar datos guardados."""
+        # Limpiar el UID activo para que no queden datos de otra sesión en memoria
+        self.db.set_current_user_id("")
         self.auth.sign_out()
         # Borrar sesión persistente (pero conservar el email recordado si aplica)
         self.settings.remove("refresh_token")
