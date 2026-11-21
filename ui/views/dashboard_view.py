@@ -253,6 +253,80 @@ class DashboardView(QWidget):
         self.main_stack.addWidget(self.farmacos_view)      # index 4
         self.main_stack.addWidget(self.billing_view)       # index 5
 
+    def reload_all_data(self):
+        """Recarga todas las vistas secundarias con los datos aislados del usuario actual."""
+        print("[DEBUG] DashboardView: Recargando todos los módulos para el usuario activo...")
+        if hasattr(self, "identificacion_view") and hasattr(self.identificacion_view, "_cargar_pacientes"):
+            try:
+                self.identificacion_view._cargar_pacientes()
+            except Exception as e:
+                print(f"[WARN] Error recargando identificacion_view: {e}")
+        if hasattr(self, "patients_view") and hasattr(self.patients_view, "load_data"):
+            try:
+                self.patients_view.load_data()
+            except Exception as e:
+                print(f"[WARN] Error recargando patients_view: {e}")
+        if hasattr(self, "appointments_view") and hasattr(self.appointments_view, "load_data"):
+            try:
+                self.appointments_view.load_data()
+            except Exception as e:
+                print(f"[WARN] Error recargando appointments_view: {e}")
+        if hasattr(self, "sessions_view") and hasattr(self.sessions_view, "load_data"):
+            try:
+                self.sessions_view.load_data()
+            except Exception as e:
+                print(f"[WARN] Error recargando sessions_view: {e}")
+        if hasattr(self, "billing_view") and hasattr(self.billing_view, "load_data"):
+            try:
+                self.billing_view.load_data()
+            except Exception as e:
+                print(f"[WARN] Error recargando billing_view: {e}")
+        if hasattr(self, "farmacos_view") and hasattr(self.farmacos_view, "load_data"):
+            try:
+                self.farmacos_view.load_data()
+            except Exception as e:
+                print(f"[WARN] Error recargando farmacos_view: {e}")
+
+    def clear_all_data(self):
+        """Limpia todas las tablas y formularios en pantalla al cerrar sesión para evitar fuga de datos."""
+        print("[DEBUG] DashboardView: Limpiando tablas de memoria por cierre de sesión.")
+        if hasattr(self, "identificacion_view"):
+            try:
+                if hasattr(self.identificacion_view, "tabla_pacientes"):
+                    self.identificacion_view.tabla_pacientes.setRowCount(0)
+                if hasattr(self.identificacion_view, "_cancelar"):
+                    self.identificacion_view._cancelar()
+                self.identificacion_view._pacientes_cache = []
+            except Exception:
+                pass
+        if hasattr(self, "patients_view"):
+            try:
+                if hasattr(self.patients_view, "table"):
+                    self.patients_view.table.setRowCount(0)
+                self.patients_view._historias_cache = []
+            except Exception:
+                pass
+        if hasattr(self, "appointments_view"):
+            try:
+                if hasattr(self.appointments_view, "table"):
+                    self.appointments_view.table.setRowCount(0)
+                self.appointments_view._citas_cache = []
+            except Exception:
+                pass
+        if hasattr(self, "sessions_view"):
+            try:
+                if hasattr(self.sessions_view, "table"):
+                    self.sessions_view.table.setRowCount(0)
+                self.sessions_view._sesiones_cache = []
+            except Exception:
+                pass
+        if hasattr(self, "billing_view"):
+            try:
+                if hasattr(self.billing_view, "table"):
+                    self.billing_view.table.setRowCount(0)
+            except Exception:
+                pass
+
     theme_toggled = pyqtSignal()
 
     def _build_topbar(self) -> QWidget:
