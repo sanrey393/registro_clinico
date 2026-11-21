@@ -84,21 +84,25 @@ class SyncWorker(QThread):
                 print(f"[WARN] Falló sincronizar {col}/{rec_id}: {e}")
 
     def _pull_latest_data(self):
-        """Descarga de Firestore las novedades a la base de datos local SQLite."""
+        """Descarga de Firestore las novedades a la base de datos local SQLite del usuario conectado."""
+        uid = self.firebase.get_current_user_id()
+        if not uid:
+            return
+
         colecciones = [
             "pacientes", "historias_clinicas", "citas", 
-            "sesiones_clinicas", "prescripciones", "facturas", "farmacos"
+            "sesiones", "sesiones_clinicas", "recetas", "prescripciones", "facturas", "farmacos"
         ]
         
         for col in colecciones:
             try:
-                # Traer documentos de Firestore
-                docs = self.firebase._db.collection(col).limit(100).stream()
+                # Traer documentos de Firestore pertenecientes únicamente al usuario médico autenticado
+                docs = self.firebase._db.collection(col).where("user_id", "==", uid).limit(150).stream()
                 for doc in docs:
                     d = doc.to_dict()
                     d["id"] = doc.id
-                    # Guardar en SQLite marcado como ya sincronizado
-                    self.cache.save_record(col, doc.id, d, is_synced=True)
-            except Exception as e:
+                    # Guardar en SQLite marcado como ya sincronizado y con su user_id
+                    self.cache.save_record(col, doc.id, d, is_synced=True, user_id=uid)
+            except Exception:
                 pass
 
