@@ -561,12 +561,14 @@ class MainWindow(QMainWindow):
         if refresh_token:
             success, result = self.auth.restore_session(refresh_token)
             if success:
-                # Recuperar nombre y email guardados
+                # Recuperar nombre, email y UID guardados
                 saved_name  = self.settings.value("user_display_name", "")
                 saved_email = self.settings.value("user_email", "")
-                # El resultado de refresh() puede tener el email
-                email = saved_email or result.get("email", "")
+                saved_uid   = self.settings.value("user_uid", "")
+                email = saved_email or (result.get("email") if isinstance(result, dict) else "")
                 name  = saved_name  or email
+                if saved_uid and isinstance(self.auth._current_user, dict) and not self.auth._current_user.get("localId"):
+                    self.auth._current_user["localId"] = saved_uid
                 self._go_to_dashboard(name, email)
                 print(f"[DEBUG] Sesión restaurada: {email}")
                 return
@@ -594,18 +596,37 @@ class MainWindow(QMainWindow):
         self.stacked_widget.setCurrentIndex(IDX_LOGIN)
 
     def _go_to_dashboard(self, display_name: str, email: str, photo_url: str = ""):
-        """Actualiza el dashboard y cambia a esa vista."""
+        """Actualiza el dashboard y cambia a esa vista aislando los datos por usuario."""
+        # 1. Asegurar el UID antes de configurar y cargar las vistas
+        uid = self.auth.get_uid()
+        if not uid and email:
+            try:
+                import firebase_admin
+                from firebase_admin import auth as admin_auth
+                if firebase_admin._apps:
+                    u_rec = admin_auth.get_user_by_email(email.strip().lower())
+                    if u_rec and u_rec.uid:
+                        uid = u_rec.uid
+                        if self.auth._current_user:
+                            self.auth._current_user["localId"] = uid
+            except Exception:
+                pass
+
+        if uid:
+            self.db.set_current_user_id(uid)
+            print(f"[DEBUG] DB aislada para UID: {uid}")
+        else:
+            print("[WARN] _go_to_dashboard: No se pudo resolver UID para el usuario.")
+
         self.setWindowTitle(f"Sistema Clínico — {display_name or email}")
         self.dashboard_view.set_user(display_name, email, photo_url)
         self.stacked_widget.setCurrentIndex(IDX_DASHBOARD)
         # Mostrar la barra de menú al entrar al dashboard
         self.app_menubar.setVisible(True)
 
-        # ── Fijar el UID del usuario en el gestor de BD para aislar sus datos ──
-        uid = self.auth.get_uid()
-        if uid:
-            self.db.set_current_user_id(uid)
-            print(f"[DEBUG] DB aislada para UID: {uid}")
+        # 2. Recargar todas las vistas con los datos específicos y aislados de este usuario
+        if hasattr(self.dashboard_view, "reload_all_data"):
+            self.dashboard_view.reload_all_data()
 
         # Comprobar actualizaciones silenciosamente tras entrar
         QTimer.singleShot(2000, lambda: self.check_for_updates(silent=True))
@@ -958,13 +979,16 @@ class MainWindow(QMainWindow):
 
     def handle_logout(self):
         """Cerrar sesión y limpiar datos guardados."""
-        # Limpiar el UID activo para que no queden datos de otra sesión en memoria
+        # Limpiar datos de memoria de todas las vistas
+        if hasattr(self, "dashboard_view") and hasattr(self.dashboard_view, "clear_all_data"):
+            self.dashboard_view.clear_all_data()
         self.db.set_current_user_id("")
         self.auth.sign_out()
         # Borrar sesión persistente (pero conservar el email recordado si aplica)
         self.settings.remove("refresh_token")
         self.settings.remove("user_display_name")
         self.settings.remove("user_email")
+        self.settings.remove("user_uid")
         self.setWindowTitle("Sistema Clínico - Psicología")
         self.login_view.clear_error()
         self.stacked_widget.setCurrentIndex(IDX_LOGIN)
@@ -983,6 +1007,9 @@ class MainWindow(QMainWindow):
             self.settings.setValue("user_display_name", name)
         if email:
             self.settings.setValue("user_email", email)
+        uid = self.auth.get_uid()
+        if uid:
+            self.settings.setValue("user_uid", uid)
 
 
 # ── Hilo para Google OAuth ───────────────────────────────────────
