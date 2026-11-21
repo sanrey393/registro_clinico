@@ -186,20 +186,61 @@ class AuthManager:
 
     # ── Recuperación de Contraseña ──────────────────────────────
     
-    def send_password_reset_email(self, email: str):
-        """Enviar correo para restablecer la contraseña usando Firebase."""
-        if not self.is_configured():
-            return False, "Firebase no está configurado."
+    def send_password_reset_email(self, email: str) -> tuple:
+        """
+        Envía correo para restablecer la contraseña usando Firebase Auth
+        y genera un enlace directo seguro de respaldo si Admin SDK está disponible.
+        
+        Returns:
+            (success: bool, user_message: str, reset_link: str | None)
+        """
+        clean_email = email.strip().lower()
+        if not clean_email:
+            return False, "Por favor, ingresa un correo electrónico válido.", None
+
+        # 1. Intentar generar enlace directo con Firebase Admin SDK como respaldo
+        reset_link = None
         try:
-            self._auth.send_password_reset_email(email)
-            return True, "Correo enviado."
-        except Exception as e:
-            error_msg = str(e)
-            if "EMAIL_NOT_FOUND" in error_msg:
-                return False, "No existe una cuenta registrada con este correo."
-            if "INVALID_EMAIL" in error_msg:
-                return False, "El formato del correo es inválido."
-            return False, "No se pudo enviar el correo. Intente más tarde."
+            import firebase_admin
+            from firebase_admin import auth as admin_auth
+            if firebase_admin._apps:
+                reset_link = admin_auth.generate_password_reset_link(clean_email)
+                print(f"[DEBUG] Enlace directo de recuperación generado: {reset_link}")
+        except Exception as ex_admin:
+            print(f"[DEBUG] Firebase Admin no pudo generar link directo: {ex_admin}")
+
+        # 2. Intentar enviar correo con Firebase Client SDK (Pyrebase)
+        client_sent = False
+        client_error = ""
+
+        if self.is_configured():
+            try:
+                self._auth.send_password_reset_email(clean_email)
+                client_sent = True
+                print(f"[DEBUG] Solicitud de correo de recuperación enviada para: {clean_email}")
+            except Exception as e:
+                client_error = str(e)
+                print(f"[WARN] Error al enviar correo vía Pyrebase: {client_error}")
+
+        # 3. Determinar resultado y mensaje al usuario
+        if client_sent or reset_link:
+            msg = (
+                "Se ha enviado la solicitud de restablecimiento.\n\n"
+                "⚠️ REVISA TU CARPETA DE SPAM / CORREO NO DESEADO:\n"
+                "Los correos automáticos de Firebase frecuentemente son clasificados como spam por Gmail, Outlook o Yahoo."
+            )
+            return True, msg, reset_link
+
+        # Si ambos fallaron, interpretar el error
+        err_upper = client_error.upper()
+        if "EMAIL_NOT_FOUND" in err_upper:
+            return False, "No existe ninguna cuenta registrada con este correo electrónico. Verifica si te registraste con otro email o mediante Google.", None
+        if "INVALID_EMAIL" in err_upper:
+            return False, "El formato del correo electrónico ingresado no es válido.", None
+        if "TOO_MANY_ATTEMPTS" in err_upper:
+            return False, "Demasiados intentos fallidos. Por seguridad, espera unos minutos antes de volver a intentar.", None
+
+        return False, f"No se pudo enviar el correo de recuperación: {client_error or 'Sin conexión con el servicio de autenticación'}", None
 
     # ── Google Sign-In ──────────────────────────────────────────
 
