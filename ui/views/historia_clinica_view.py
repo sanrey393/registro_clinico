@@ -204,7 +204,8 @@ class HistoriaClinicaView(QWidget):
         self._pacientes_cache = []
         self.setStyleSheet(STYLE)
         self.setup_ui()
-        self.load_data()
+        if hasattr(self.db, "get_current_user_id") and self.db.get_current_user_id():
+            self.load_data()
 
     def focus_new_form(self):
         """Limpia el formulario y enfoca el campo de nombre para una nueva historia."""
@@ -1135,7 +1136,14 @@ class HistoriaClinicaView(QWidget):
                 QMessageBox.information(self, "✅ Éxito", "Historia clínica actualizada correctamente.")
             else:
                 # Inyectar user_id del médico en sesión
-                datos["user_id"] = self.db.get_current_user_id()
+                uid = self.db.get_current_user_id()
+                if not uid:
+                    try:
+                        from core.auth_manager import AuthManager
+                        uid = AuthManager().get_uid()
+                    except Exception:
+                        pass
+                datos["user_id"] = uid or ""
                 if hasattr(self.db, "crear_historia_clinica"):
                     nuevo_id = self.db.crear_historia_clinica(datos)
                 elif hasattr(self.db, "_db") and self.db._db:
