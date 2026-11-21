@@ -68,7 +68,40 @@ class AuthManager:
         """UID de Firebase del usuario autenticado."""
         if not self._current_user:
             return ""
-        return self._current_user.get("localId", "")
+        uid = (
+            self._current_user.get("localId") or
+            self._current_user.get("user_id") or
+            self._current_user.get("userId") or
+            self._current_user.get("uid") or
+            ""
+        )
+        if not uid and self.get_email():
+            email_clean = self.get_email().strip().lower()
+            # 1. Intentar resolver mediante Firebase Admin SDK
+            try:
+                import firebase_admin
+                from firebase_admin import auth as admin_auth
+                if firebase_admin._apps:
+                    u_rec = admin_auth.get_user_by_email(email_clean)
+                    if u_rec and u_rec.uid:
+                        uid = u_rec.uid
+                        self._current_user["localId"] = uid
+            except Exception:
+                pass
+
+            # 2. Intentar resolver mediante base local si falla
+            if not uid:
+                try:
+                    with self.local_cache._get_connection() as conn:
+                        cur = conn.cursor()
+                        cur.execute("SELECT uid FROM local_users WHERE email = ?", (email_clean,))
+                        row = cur.fetchone()
+                        if row and row["uid"]:
+                            uid = row["uid"]
+                            self._current_user["localId"] = uid
+                except Exception:
+                    pass
+        return uid or ""
 
     def get_photo_url(self):
         """URL de foto de perfil (solo disponible con Google Sign-In)."""
