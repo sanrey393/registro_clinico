@@ -563,11 +563,15 @@ class IdentificacionView(QWidget):
 
         try:
             if self._paciente_id_actual:
+                datos["updated_at"] = True  # Se sobreescribe por SERVER_TIMESTAMP en manager
+                # Actualizar preservando user_id existente
                 self.db._db.collection("pacientes").document(
                     self._paciente_id_actual
                 ).update(datos)
                 QMessageBox.information(self, "✅ Éxito", "Paciente actualizado correctamente.")
             else:
+                # Inyectar user_id del médico en sesión
+                datos["user_id"] = self.db.get_current_user_id()
                 self.db.crear_paciente(datos)
                 QMessageBox.information(self, "✅ Éxito", "Paciente registrado correctamente.")
 
