@@ -55,7 +55,7 @@ def build():
     #    Así load_app_env() los encontrará en os.path.dirname(sys.executable)
     dist_dir = os.path.join(BASE_DIR, "dist", "SistemaClinico")
 
-    for filename in [".env", "firebase_service_account.json"]:
+    for filename in [".env", "firebase_service_account.json", "version.json"]:
         src_file = os.path.join(BASE_DIR, filename)
         dst_file = os.path.join(dist_dir, filename)
         if os.path.exists(src_file):
