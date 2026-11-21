@@ -63,9 +63,20 @@ class LocalCache:
                     is_synced INTEGER DEFAULT 1,     -- 1 = sincronizado con nube, 0 = pendiente de subir
                     is_deleted INTEGER DEFAULT 0,    -- 1 = marcado para borrar en la nube
                     updated_at TEXT,
+                    user_id TEXT DEFAULT '',
                     PRIMARY KEY (collection_name, record_id)
                 )
             """)
+
+            # Migración: verificar si la columna user_id existe
+            cursor.execute("PRAGMA table_info(local_records)")
+            cols = [c[1] for c in cursor.fetchall()]
+            if "user_id" not in cols:
+                try:
+                    cursor.execute("ALTER TABLE local_records ADD COLUMN user_id TEXT DEFAULT ''")
+                except Exception:
+                    pass
+
             conn.commit()
 
     # ── MÓDULO DE AUTENTICACIÓN OFFLINE ──────────────────────────────────────────
@@ -128,12 +139,22 @@ class LocalCache:
 
     # ── MÓDULO DE REGISTROS LOCALES (LOCAL-FIRST) ──────────────────────────────
 
-    def save_record(self, collection: str, record_id: str, data: dict, is_synced: bool = False):
-        """Guarda o actualiza un documento en local, cifrando datos clínicos sensibles."""
+    def save_record(self, collection: str, record_id: str, data: dict, is_synced: bool = False, user_id: str = ""):
+        """Guarda o actualiza un documento en local vinculado al usuario, cifrando datos clínicos sensibles."""
         now = datetime.now().isoformat()
         
+        # Determinar user_id
+        doc_user_id = user_id or data.get("user_id", "")
+        if not doc_user_id:
+            try:
+                from core.auth_manager import AuthManager
+                doc_user_id = AuthManager().get_uid()
+            except Exception:
+                pass
+
         # Cifrar campos clínicos especialmente confidenciales si están presentes
         clean_data = dict(data)
+        clean_data["user_id"] = doc_user_id
         campos_confidenciales = [
             "motivo_consulta", "enfermedad_actual", "antecedentes_personales",
             "antecedentes_familiares", "examen_mental", "diagnostico_principal",
@@ -147,14 +168,15 @@ class LocalCache:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT OR REPLACE INTO local_records
-                (collection_name, record_id, data_json, is_synced, is_deleted, updated_at)
-                VALUES (?, ?, ?, ?, 0, ?)
+                (collection_name, record_id, data_json, is_synced, is_deleted, updated_at, user_id)
+                VALUES (?, ?, ?, ?, 0, ?, ?)
             """, (
                 collection,
                 str(record_id),
                 json.dumps(clean_data),
                 1 if is_synced else 0,
-                now
+                now,
+                doc_user_id or ""
             ))
             conn.commit()
 
@@ -175,14 +197,28 @@ class LocalCache:
                 """, (now, collection, str(record_id)))
             conn.commit()
 
-    def get_records(self, collection: str) -> list[dict]:
-        """Obtiene todos los registros activos descifrando campos sensibles."""
+    def get_records(self, collection: str, user_id: str = "") -> list[dict]:
+        """Obtiene todos los registros activos del usuario especificado descifrando campos sensibles."""
+        uid = user_id
+        if not uid:
+            try:
+                from core.auth_manager import AuthManager
+                uid = AuthManager().get_uid()
+            except Exception:
+                pass
+
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
-                SELECT record_id, data_json FROM local_records
-                WHERE collection_name = ? AND is_deleted = 0
-            """, (collection,))
+            if uid:
+                cursor.execute("""
+                    SELECT record_id, data_json FROM local_records
+                    WHERE collection_name = ? AND is_deleted = 0 AND (user_id = ? OR user_id = '')
+                """, (collection, uid))
+            else:
+                cursor.execute("""
+                    SELECT record_id, data_json FROM local_records
+                    WHERE collection_name = ? AND is_deleted = 0
+                """, (collection,))
             rows = cursor.fetchall()
             result = []
             
@@ -195,6 +231,9 @@ class LocalCache:
             for r in rows:
                 item = json.loads(r["data_json"])
                 item["id"] = r["record_id"]
+                # Filtro de seguridad: si el usuario especificado no coincide con el dueño del documento, excluir
+                if uid and item.get("user_id") and item.get("user_id") != uid:
+                    continue
                 # Descifrar si vienen cifrados
                 for campo in campos_confidenciales:
                     if campo in item and isinstance(item[campo], str) and item[campo]:
