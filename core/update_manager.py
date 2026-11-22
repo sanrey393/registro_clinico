@@ -1,11 +1,25 @@
 # core/update_manager.py
 # Gestor de comprobación de actualizaciones remotas en segundo plano
 
+import os
 import json
 import urllib.request
 from PyQt6.QtCore import QThread, pyqtSignal, QObject
+from core.app_paths import app_dir
 
-CURRENT_VERSION = "1.0.0"
+def get_local_version() -> str:
+    """Obtiene la versión local instalada desde version.json, o '1.1.0' por defecto."""
+    try:
+        v_path = os.path.join(app_dir(), "version.json")
+        if os.path.exists(v_path):
+            with open(v_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data.get("version", "1.1.0").strip().lstrip("vV")
+    except Exception:
+        pass
+    return "1.1.0"
+
+CURRENT_VERSION = get_local_version()
 VERSION_JSON_URL = "https://raw.githubusercontent.com/sanrey393/registro_clinico/main/version.json"
 GITHUB_RELEASES_API = "https://api.github.com/repos/sanrey393/registro_clinico/releases/latest"
 
