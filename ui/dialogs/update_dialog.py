@@ -26,20 +26,23 @@ class DownloadWorker(QThread):
         try:
             self.status.emit("Conectando con el servidor...")
             temp_dir = tempfile.gettempdir()
-            dest_file = os.path.join(temp_dir, f"update_{int(time.time())}.zip")
+            # Detectar si la URL apunta a un ejecutable (.exe) o a un ZIP (.zip)
+            is_exe = ".exe" in self.url.lower().split("?")[0]
+            ext = ".exe" if is_exe else ".zip"
+            dest_file = os.path.join(temp_dir, f"update_{int(time.time())}{ext}")
 
             req = urllib.request.Request(
                 self.url,
                 headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) RegistroClinico-Updater"}
             )
 
-            with urllib.request.urlopen(req, timeout=30) as response, open(dest_file, "wb") as out_file:
+            with urllib.request.urlopen(req, timeout=60) as response, open(dest_file, "wb") as out_file:
                 total_length = response.getheader('content-length')
                 if total_length:
                     total_length = int(total_length)
                 
                 downloaded = 0
-                block_size = 8192
+                block_size = 16384
                 self.status.emit("Descargando actualización...")
 
                 while True:
@@ -52,14 +55,21 @@ class DownloadWorker(QThread):
                     if total_length:
                         percent = int((downloaded / total_length) * 100)
                         self.progress.emit(percent)
-                        self.status.emit(f"Descargando: {downloaded // 1024} KB / {total_length // 1024} KB ({percent}%)")
+                        self.status.emit(f"Descargando: {downloaded // (1024*1024)} MB / {total_length // (1024*1024)} MB ({percent}%)")
                     else:
                         self.status.emit(f"Descargando: {downloaded // 1024} KB...")
 
             self.status.emit("Descarga completada. Verificando archivo...")
-            # Verificar si es un ZIP válido
-            if not zipfile.is_zipfile(dest_file):
-                raise ValueError("El archivo descargado no es un paquete ZIP válido.")
+            # Verificar integridad básica
+            if is_exe:
+                # Comprobar firma PE de Windows (MZ)
+                with open(dest_file, "rb") as chk:
+                    header = chk.read(2)
+                    if header != b'MZ':
+                        raise ValueError("El archivo instalador descargado no es válido o está dañado.")
+            else:
+                if not zipfile.is_zipfile(dest_file):
+                    raise ValueError("El archivo descargado no es un paquete ZIP válido.")
 
             self.finished.emit(dest_file)
 
@@ -191,19 +201,45 @@ class UpdateDialog(QDialog):
             f"No se pudo descargar la actualización:\n\n{err_msg}"
         )
 
-    def _aplicar_actualizacion(self, zip_path: str):
+    def _aplicar_actualizacion(self, file_path: str):
         """
-        Crea un script .bat auxiliar que:
-        1. Espera a que la app actual termine de cerrarse por completo.
-        2. Hace respaldo preventivo de .env, firebase_service_account.json, local_storage.db y .license.dat.
-        3. Descomprime y sobreescribe los archivos en el directorio raíz del programa.
-        4. Restaura los archivos de credenciales/licencia del usuario.
-        5. Vuelve a iniciar la aplicación y se autoelimina.
+        Aplica la actualización:
+        - Si es un instalador .exe: inicia el instalador de Inno Setup y cierra el programa.
+        - Si es un .zip: crea un script .bat auxiliar para descomprimir y reemplazar archivos preservando datos.
         """
-        target_dir = get_app_root()
+        is_exe = file_path.lower().endswith(".exe")
         temp_dir = tempfile.gettempdir()
-        backup_dir = os.path.join(temp_dir, "clinic_backup_update")
         bat_path = os.path.join(temp_dir, "install_update.bat")
+
+        if is_exe:
+            # Para instaladores Inno Setup
+            bat_content = f"""@echo off
+chcp 65001 > nul
+title Actualizando Sistema Clínico...
+echo ========================================================
+echo       INICIANDO INSTALADOR DE LA NUEVA VERSIÓN
+echo ========================================================
+echo Esperando a que el sistema se cierre por completo...
+timeout /t 3 /nobreak > nul
+start "" "{file_path}"
+del "%~f0" > nul 2>&1
+exit
+"""
+            with open(bat_path, "w", encoding="utf-8") as f:
+                f.write(bat_content)
+
+            QMessageBox.information(
+                self,
+                "Actualización lista",
+                "El instalador de la nueva versión se ha descargado correctamente.\n\n"
+                "El sistema se cerrará e iniciará el instalador para aplicar la actualización."
+            )
+            subprocess.Popen(["cmd.exe", "/c", bat_path], shell=True)
+            sys.exit(0)
+
+        # Si es un paquete ZIP
+        target_dir = get_app_root()
+        backup_dir = os.path.join(temp_dir, "clinic_backup_update")
 
         is_frozen = getattr(sys, "frozen", False)
         exe_path = sys.executable
@@ -234,7 +270,7 @@ if exist "{target_dir}\\.vault.key" copy /y "{target_dir}\\.vault.key" "{backup_
 
 :: 2. Descomprimir archivos de la nueva versión
 echo Descomprimiendo nueva versión en {target_dir}...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -Path '{zip_path}' -DestinationPath '{target_dir}' -Force"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -Path '{file_path}' -DestinationPath '{target_dir}' -Force"
 
 :: 3. Restaurar credenciales y datos si fueron sobreescritos
 echo Restaurando credenciales del usuario...
@@ -246,7 +282,7 @@ if exist "{backup_dir}\\.vault.key" copy /y "{backup_dir}\\.vault.key" "{target_
 rmdir /s /q "{backup_dir}" > nul 2>&1
 
 :: 4. Limpieza de temporales
-del /f /q "{zip_path}" > nul 2>&1
+del /f /q "{file_path}" > nul 2>&1
 
 :: 5. Reiniciar aplicación actualizada
 echo Reiniciando el sistema...
