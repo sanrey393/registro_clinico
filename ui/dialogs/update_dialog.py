@@ -102,51 +102,98 @@ class DownloadWorker(QThread):
 class UpdateDialog(QDialog):
     def __init__(self, parent, nueva_version: str, url: str, notas: str = "", auto_start: bool = False):
         super().__init__(parent)
-        self.setWindowTitle("Actualización Disponible")
-        self.setFixedSize(480, 320)
+        self.setWindowTitle("Actualización de PSIQUE")
+        self.setFixedSize(500, 340)
         self.url = url
         self.nueva_version = nueva_version
         self.notas = notas
         self.worker = None
+
+        app = QApplication.instance()
+        self._dark = (
+            bool(parent._is_dark_mode)
+            if (parent is not None and hasattr(parent, "_is_dark_mode"))
+            else (app.palette().window().color().lightness() < 128 if app is not None else False)
+        )
 
         self._build_ui()
         if auto_start:
             QTimer.singleShot(0, self._start_download)
 
     def _build_ui(self):
+        if self._dark:
+            bg_dlg = "#0f172a"
+            title_col = "#f8fafc"
+            label_col = "#e2e8f0"
+            muted_col = "#94a3b8"
+            notes_bg = "#1e293b"
+            notes_border = "#334155"
+            notes_text = "#f1f5f9"
+            sec_btn_bg = "#1e293b"
+            sec_btn_border = "#334155"
+            sec_btn_text = "#e2e8f0"
+            sec_btn_hover = "#334155"
+            bar_bg = "#1e293b"
+        else:
+            bg_dlg = "#ffffff"
+            title_col = "#0b2b2e"
+            label_col = "#1e293b"
+            muted_col = "#475569"
+            notes_bg = "#f8fafc"
+            notes_border = "#cbd5e1"
+            notes_text = "#1e293b"
+            sec_btn_bg = "#f1f5f9"
+            sec_btn_border = "#cbd5e1"
+            sec_btn_text = "#334155"
+            sec_btn_hover = "#e2e8f0"
+            bar_bg = "#e2e8f0"
+
+        self.setObjectName("PsiqueUpdateDialog")
+        self.setStyleSheet(f"""
+            QDialog#PsiqueUpdateDialog {{
+                background: {bg_dlg};
+                font-family: "Segoe UI", "Inter", sans-serif;
+            }}
+        """)
+
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setContentsMargins(24, 22, 24, 22)
         layout.setSpacing(12)
 
         # Encabezado
-        self.lbl_title = QLabel(f"<b>✨ ¡Nueva versión {self.nueva_version} disponible!</b>")
-        self.lbl_title.setStyleSheet("font-size: 15px; color: #1e3a8a;")
+        self.lbl_title = QLabel(f"Nueva versión v{self.nueva_version} disponible")
+        self.lbl_title.setStyleSheet(
+            f"font-size: 16px; font-weight: 700; color: {title_col}; background: transparent;"
+        )
         layout.addWidget(self.lbl_title)
 
         # Notas de la versión
         lbl_notes_title = QLabel("Novedades y cambios:")
-        lbl_notes_title.setStyleSheet("font-size: 12px; font-weight: bold; color: #475569;")
+        lbl_notes_title.setStyleSheet(
+            f"font-size: 12.5px; font-weight: 700; color: {label_col}; background: transparent;"
+        )
         layout.addWidget(lbl_notes_title)
 
         self.txt_notes = QTextEdit()
         self.txt_notes.setReadOnly(True)
         self.txt_notes.setPlainText(self.notas if self.notas else "Mejoras de rendimiento y correcciones del sistema.")
-        self.txt_notes.setStyleSheet("""
-            QTextEdit {
-                background: #f8fafc;
-                border: 1px solid #cbd5e1;
-                border-radius: 6px;
-                font-size: 11px;
-                color: #334155;
-                padding: 6px;
-            }
+        self.txt_notes.setStyleSheet(f"""
+            QTextEdit {{
+                background: {notes_bg};
+                border: 1px solid {notes_border};
+                border-radius: 8px;
+                font-family: "Segoe UI", "Inter", sans-serif;
+                font-size: 12px;
+                color: {notes_text};
+                padding: 8px 10px;
+            }}
         """)
-        self.txt_notes.setFixedHeight(90)
+        self.txt_notes.setFixedHeight(95)
         layout.addWidget(self.txt_notes)
 
         # Estado y progreso
         self.lbl_status = QLabel("Presiona 'Actualizar Ahora' para iniciar.")
-        self.lbl_status.setStyleSheet("color: #64748b; font-size: 11px;")
+        self.lbl_status.setStyleSheet(f"color: {muted_col}; font-size: 12px; background: transparent;")
         layout.addWidget(self.lbl_status)
 
         self.progress_bar = QProgressBar()
@@ -154,6 +201,21 @@ class UpdateDialog(QDialog):
         self.progress_bar.setValue(0)
         self.progress_bar.setTextVisible(True)
         self.progress_bar.setVisible(False)
+        self.progress_bar.setStyleSheet(f"""
+            QProgressBar {{
+                background: {bar_bg};
+                border: 1px solid {notes_border};
+                border-radius: 6px;
+                text-align: center;
+                color: {title_col};
+                font-weight: 600;
+                height: 20px;
+            }}
+            QProgressBar::chunk {{
+                background: #0f766e;
+                border-radius: 5px;
+            }}
+        """)
         layout.addWidget(self.progress_bar)
 
         # Botones de acción
@@ -161,32 +223,33 @@ class UpdateDialog(QDialog):
         btn_layout.addStretch()
 
         self.btn_cancel = QPushButton("Recordar más tarde")
-        self.btn_cancel.setStyleSheet("""
-            QPushButton {
-                background: #f1f5f9;
-                color: #475569;
-                border: 1px solid #cbd5e1;
-                border-radius: 6px;
-                padding: 6px 14px;
-                font-size: 12px;
-            }
-            QPushButton:hover { background: #e2e8f0; }
+        self.btn_cancel.setStyleSheet(f"""
+            QPushButton {{
+                background: {sec_btn_bg};
+                color: {sec_btn_text};
+                border: 1px solid {sec_btn_border};
+                border-radius: 8px;
+                padding: 8px 16px;
+                font-size: 12.5px;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{ background: {sec_btn_hover}; }}
         """)
         self.btn_cancel.clicked.connect(self.close)
         btn_layout.addWidget(self.btn_cancel)
 
-        self.btn_start = QPushButton("🚀 Actualizar Ahora")
+        self.btn_start = QPushButton("Actualizar Ahora")
         self.btn_start.setStyleSheet("""
             QPushButton {
-                background: #2563eb;
+                background: #0f766e;
                 color: #ffffff;
                 border: none;
-                border-radius: 6px;
-                padding: 6px 18px;
-                font-weight: bold;
-                font-size: 12px;
+                border-radius: 8px;
+                padding: 8px 20px;
+                font-weight: 700;
+                font-size: 12.5px;
             }
-            QPushButton:hover { background: #1d4ed8; }
+            QPushButton:hover { background: #14b8a6; }
         """)
         self.btn_start.clicked.connect(self._start_download)
         btn_layout.addWidget(self.btn_start)
