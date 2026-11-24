@@ -479,7 +479,7 @@ class MainWindow(QMainWindow):
         if not path:
             return
 
-        ok, msg_or_path, stats = BackupManager.crear_respaldo(path)
+        ok, msg_or_path, stats = BackupManager.crear_respaldo(path, db=self.db)
         if ok:
             QMessageBox.information(
                 self,
@@ -488,9 +488,10 @@ class MainWindow(QMainWindow):
                 f"📁 Archivo: {os.path.basename(msg_or_path)}\n"
                 f"📍 Ubicación: {os.path.dirname(msg_or_path)}\n"
                 f"👥 Pacientes: {stats.get('pacientes', 0)}\n"
+                f"📖 Historias clínicas: {stats.get('historias_clinicas', 0)}\n"
                 f"📅 Citas: {stats.get('citas', 0)}\n"
                 f"📋 Sesiones clínicas: {stats.get('sesiones', 0)}\n"
-                f"🧾 Facturas: {stats.get('facturas', 0)}\n"
+                f"💊 Recetas: {stats.get('recetas', 0)}\n"
                 f"🕒 Fecha: {stats.get('fecha', '')}"
             )
         else:
@@ -516,7 +517,7 @@ class MainWindow(QMainWindow):
             self,
             "⚠️ Confirmar Restauración de Datos",
             f"¿Estás seguro de que deseas restaurar los datos desde:\n{os.path.basename(path)}?\n\n"
-            "Se actualizará la base de datos local con los pacientes e historias del archivo seleccionado.\n"
+            "Se actualizará la base de datos local y la nube con los registros del archivo seleccionado.\n"
             "(El sistema creará automáticamente una copia de seguridad preventiva de tu base actual).",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
@@ -524,15 +525,16 @@ class MainWindow(QMainWindow):
         if confirm != QMessageBox.StandardButton.Yes:
             return
 
-        ok, msg = BackupManager.restaurar_respaldo(path)
+        ok, msg = BackupManager.restaurar_respaldo(path, db=self.db)
         if ok:
             QMessageBox.information(
                 self,
                 "✅ Restauración Exitosa",
-                f"{msg}\n\nLos datos se han cargado y la base de datos local está lista."
+                f"{msg}\n\nLos módulos se actualizarán ahora con los datos cargados."
             )
-            # Refrescar módulos del dashboard para mostrar los nuevos registros cargados
-            if hasattr(self, "dashboard_view") and hasattr(self.dashboard_view, "setup_modules"):
+            if hasattr(self, "dashboard_view") and hasattr(self.dashboard_view, "reload_all_data"):
+                self.dashboard_view.reload_all_data()
+            elif hasattr(self, "dashboard_view") and hasattr(self.dashboard_view, "setup_modules"):
                 self.dashboard_view.setup_modules(self.db)
         else:
             QMessageBox.critical(self, "Error en Restauración", f"No se pudo restaurar el archivo:\n{msg}")

@@ -51,23 +51,15 @@ class BackupManager:
             s.setValue("last_backup_date", config.get("last_backup_date"))
 
     @staticmethod
-    def crear_respaldo(destino_archivo: str = None) -> tuple[bool, str, dict]:
+    def crear_respaldo(destino_archivo: str = None, db=None) -> tuple[bool, str, dict]:
         """
         Crea un paquete de respaldo seguro comprimido (.clinicabak / .zip).
-        Contiene:
-        1. Base de datos SQLite local (local_storage.db)
-        2. Volcado estructurado en JSON de todos los registros clínicos
-        3. Llave de cifrado de bóveda (.vault.key) si existe
-        4. Manifiesto del respaldo (metadatos, fecha, conteos)
-        
-        Returns:
-            (success: bool, mensaje_o_ruta: str, estadisticas: dict)
+        Si `db` está conectado a Firestore, exporta primero todas las colecciones
+        activas (pacientes, historias_clinicas, citas, sesiones_clinicas, recetas)
+        y las sincroniza en local_storage.db antes de empaquetar.
         """
         root = app_dir()
         db_path = os.path.join(root, "local_storage.db")
-
-        if not os.path.exists(db_path):
-            return False, "No se encontró la base de datos local para respaldar.", {}
 
         now_dt = datetime.datetime.now()
         timestamp_str = now_dt.strftime("%Y-%m-%d_%H%M%S")
@@ -77,70 +69,116 @@ class BackupManager:
             os.makedirs(default_dir, exist_ok=True)
             destino_archivo = os.path.join(default_dir, f"Respaldo_Clinico_{timestamp_str}.clinicabak")
 
-        # Asegurar extensión .clinicabak o .zip
         if not (destino_archivo.endswith(".clinicabak") or destino_archivo.endswith(".zip")):
             destino_archivo += ".clinicabak"
 
-        # Extraer registros locales para incluirlos también en JSON legible
+        colecciones = [
+            "pacientes",
+            "historias_clinicas",
+            "citas",
+            "sesiones_clinicas",
+            "recetas",
+        ]
+
         cache = LocalCache()
+        json_dump = {c: [] for c in colecciones}
+
+        # 1. Si hay conexión a Firestore, extraer colecciones reales del usuario y volcarlas a SQLite
+        uso_firestore = False
+        if db is not None and hasattr(db, "is_configured") and db.is_configured():
+            try:
+                uid = db.get_current_user_id() if hasattr(db, "get_current_user_id") else ""
+                with cache._get_connection() as conn:
+                    cur = conn.cursor()
+                    for col in colecciones:
+                        query = db._db.collection(col)
+                        if uid:
+                            query = query.where("user_id", "==", uid)
+                        for doc in query.stream():
+                            rec = doc.to_dict() or {}
+                            rec_id = doc.id
+                            rec["_id"] = rec_id
+                            rec["id"] = rec.get("id") or rec_id
+                            json_dump[col].append(rec)
+                            cur.execute(
+                                """
+                                INSERT OR REPLACE INTO local_records
+                                (collection_name, record_id, data_json, is_synced, is_deleted, updated_at, user_id)
+                                VALUES (?, ?, ?, 1, 0, ?, ?)
+                                """,
+                                (
+                                    col,
+                                    rec_id,
+                                    json.dumps(rec, ensure_ascii=False, default=str),
+                                    now_dt.isoformat(),
+                                    uid or rec.get("user_id", ""),
+                                ),
+                            )
+                    conn.commit()
+                uso_firestore = True
+            except Exception as e:
+                print(f"[WARN] Error leyendo Firestore en respaldo (usando caché local): {e}")
+
+        # 2. Fallback o complemento desde SQLite local_records
+        if not uso_firestore:
+            if not os.path.exists(db_path):
+                return False, "No se encontró la base de datos local para respaldar.", {}
+            try:
+                with cache._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT collection_name, record_id, data_json, updated_at "
+                        "FROM local_records WHERE is_deleted = 0"
+                    )
+                    rows = cursor.fetchall()
+                    for r in rows:
+                        col = r["collection_name"]
+                        if col not in json_dump:
+                            json_dump[col] = []
+                        try:
+                            record_dict = json.loads(r["data_json"])
+                        except Exception:
+                            record_dict = {"raw": r["data_json"]}
+                        record_dict["_id"] = r["record_id"]
+                        record_dict["id"] = record_dict.get("id") or r["record_id"]
+                        record_dict["_updated_at"] = r["updated_at"]
+                        json_dump[col].append(record_dict)
+            except Exception as e:
+                print(f"[WARN] No se pudo volcar JSON en respaldo: {e}")
+
+        if not os.path.exists(db_path):
+            return False, "No se encontró la base de datos local para respaldar.", {}
+
+        total_reg = sum(len(v) for v in json_dump.values())
         stats = {
             "fecha": now_dt.strftime("%d/%m/%Y %H:%M:%S"),
             "timestamp": now_dt.isoformat(),
-            "pacientes": 0,
-            "citas": 0,
-            "sesiones": 0,
-            "facturas": 0,
-            "total_registros": 0
+            "pacientes": len(json_dump.get("pacientes", [])),
+            "historias_clinicas": len(json_dump.get("historias_clinicas", [])),
+            "citas": len(json_dump.get("citas", [])),
+            "sesiones": len(json_dump.get("sesiones_clinicas", [])),
+            "recetas": len(json_dump.get("recetas", [])),
+            "total_registros": total_reg,
         }
 
-        json_dump = {}
-        try:
-            with cache._get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT collection_name, record_id, data_json, updated_at FROM local_records WHERE is_deleted = 0")
-                rows = cursor.fetchall()
-                for r in rows:
-                    col = r["collection_name"]
-                    if col not in json_dump:
-                        json_dump[col] = []
-                    try:
-                        record_dict = json.loads(r["data_json"])
-                    except Exception:
-                        record_dict = {"raw": r["data_json"]}
-                    record_dict["_id"] = r["record_id"]
-                    record_dict["_updated_at"] = r["updated_at"]
-                    json_dump[col].append(record_dict)
-
-                stats["pacientes"] = len(json_dump.get("pacientes", []))
-                stats["citas"] = len(json_dump.get("citas", []))
-                stats["sesiones"] = len(json_dump.get("sesiones_clinicas", []))
-                stats["facturas"] = len(json_dump.get("facturas", []))
-                stats["total_registros"] = len(rows)
-        except Exception as e:
-            print(f"[WARN] No se pudo volcar JSON en respaldo: {e}")
-
-        # Empaquetar todo en archivo ZIP (.clinicabak)
         temp_manifest = json.dumps(stats, indent=2, ensure_ascii=False)
-        temp_json = json.dumps(json_dump, indent=2, ensure_ascii=False)
+        temp_json = json.dumps(json_dump, indent=2, ensure_ascii=False, default=str)
 
         try:
             with zipfile.ZipFile(destino_archivo, "w", zipfile.ZIP_DEFLATED) as zf:
-                # 1. Base de datos SQLite
                 zf.write(db_path, arcname="local_storage.db")
-                # 2. JSON estructurado
                 zf.writestr("datos_clinicos.json", temp_json)
-                # 3. Manifiesto
                 zf.writestr("manifest.json", temp_manifest)
-                # 4. Llave de cifrado si existe
                 vault_key = os.path.join(root, ".vault.key")
                 if os.path.exists(vault_key):
                     zf.write(vault_key, arcname=".vault.key")
-                # 5. Catálogo de fármacos registrados
                 farmacos_json = os.path.join(root, "data", "farmacos_registrados.json")
                 if os.path.exists(farmacos_json):
                     zf.write(farmacos_json, arcname="farmacos_registrados.json")
+                recetas_local = os.path.join(root, "recetas_guardadas.json")
+                if os.path.exists(recetas_local):
+                    zf.write(recetas_local, arcname="recetas_guardadas.json")
 
-            # Actualizar última fecha de respaldo en config
             config = BackupManager.get_backup_config()
             config["last_backup_date"] = now_dt.strftime("%Y-%m-%d %H:%M:%S")
             BackupManager.save_backup_config(config)
@@ -150,54 +188,160 @@ class BackupManager:
             return False, f"Error al escribir archivo de respaldo: {e}", stats
 
     @staticmethod
-    def restaurar_respaldo(archivo_respaldo: str) -> tuple[bool, str]:
+    def restaurar_respaldo(archivo_respaldo: str, db=None) -> tuple[bool, str]:
         """
-        Restaura la base de datos local y archivos clínicos desde un archivo de respaldo.
-        Crea una copia de seguridad preventiva automática de la base actual antes de restaurar.
+        Restaura la base de datos local, archivos clínicos y (si Firestore está activo)
+        sincroniza los registros restaurados en la nube bajo el usuario actual.
         """
         if not os.path.exists(archivo_respaldo):
             return False, "El archivo de respaldo seleccionado no existe."
 
-        if not zipfile.is_zipfile(archivo_respaldo):
-            return False, "El archivo seleccionado no es un archivo de respaldo válido (.clinicabak o .zip)."
+        es_db_directo = archivo_respaldo.lower().endswith(".db")
+        if not es_db_directo and not zipfile.is_zipfile(archivo_respaldo):
+            return False, "El archivo seleccionado no es un respaldo válido (.clinicabak, .zip o .db)."
 
         root = app_dir()
         db_path = os.path.join(root, "local_storage.db")
 
-        # 1. Crear copia de seguridad preventiva antes de sobreescribir
+        # 1. Copia preventiva de la base actual
         if os.path.exists(db_path):
-            pre_restore_bak = os.path.join(root, f"local_storage_prerestore_{int(datetime.datetime.now().timestamp())}.db")
+            pre_restore_bak = os.path.join(
+                root, f"local_storage_prerestore_{int(datetime.datetime.now().timestamp())}.db"
+            )
             try:
                 shutil.copy2(db_path, pre_restore_bak)
             except Exception as e:
                 print(f"[WARN] No se pudo crear copia preventiva pre-restore: {e}")
 
-        # 2. Extraer y restaurar componentes
+        json_dump = {}
         try:
-            with zipfile.ZipFile(archivo_respaldo, "r") as zf:
-                file_list = zf.namelist()
+            if es_db_directo:
+                shutil.copy2(archivo_respaldo, db_path)
+            else:
+                with zipfile.ZipFile(archivo_respaldo, "r") as zf:
+                    file_list = zf.namelist()
+                    if "local_storage.db" not in file_list and "datos_clinicos.json" not in file_list:
+                        return False, "El respaldo no contiene local_storage.db ni datos_clinicos.json."
 
-                if "local_storage.db" not in file_list:
-                    return False, "El archivo de respaldo no contiene la base de datos local_storage.db."
+                    if "local_storage.db" in file_list:
+                        zf.extract("local_storage.db", root)
+                    if ".vault.key" in file_list:
+                        zf.extract(".vault.key", root)
+                    if "farmacos_registrados.json" in file_list:
+                        data_dir = os.path.join(root, "data")
+                        os.makedirs(data_dir, exist_ok=True)
+                        zf.extract("farmacos_registrados.json", data_dir)
+                    if "recetas_guardadas.json" in file_list:
+                        zf.extract("recetas_guardadas.json", root)
+                    if "datos_clinicos.json" in file_list:
+                        try:
+                            json_dump = json.loads(zf.read("datos_clinicos.json").decode("utf-8"))
+                        except Exception as e_json:
+                            print(f"[WARN] No se pudo parsear datos_clinicos.json: {e_json}")
 
-                # Extraer local_storage.db
-                zf.extract("local_storage.db", root)
-
-                # Extraer .vault.key si está incluida
-                if ".vault.key" in file_list:
-                    zf.extract(".vault.key", root)
-
-                # Extraer fármacos registrados si están incluidos
-                if "farmacos_registrados.json" in file_list:
-                    data_dir = os.path.join(root, "data")
-                    os.makedirs(data_dir, exist_ok=True)
-                    zf.extract("farmacos_registrados.json", data_dir)
-
-            # Re-inicializar singleton de LocalCache para apuntar a la nueva base
+            # Re-inicializar LocalCache
             LocalCache._instance = None
-            LocalCache()
+            cache = LocalCache()
 
-            return True, "Base de datos y archivos clínicos restaurados exitosamente."
+            uid = ""
+            if db is not None and hasattr(db, "get_current_user_id"):
+                uid = db.get_current_user_id() or ""
+
+            # Si no venía datos_clinicos.json, leer desde local_records del SQLite restaurado
+            if not json_dump and os.path.exists(db_path):
+                with cache._get_connection() as conn:
+                    cur = conn.cursor()
+                    cur.execute(
+                        "SELECT collection_name, record_id, data_json "
+                        "FROM local_records WHERE is_deleted = 0"
+                    )
+                    for row in cur.fetchall():
+                        col = row["collection_name"]
+                        json_dump.setdefault(col, [])
+                        try:
+                            d = json.loads(row["data_json"])
+                        except Exception:
+                            continue
+                        d["_id"] = row["record_id"]
+                        d["id"] = d.get("id") or row["record_id"]
+                        json_dump[col].append(d)
+
+            # Reasignar user_id en local_records al usuario activo para que el modo offline funcione
+            if uid and os.path.exists(db_path):
+                try:
+                    with cache._get_connection() as conn:
+                        cur = conn.cursor()
+                        cur.execute("UPDATE local_records SET user_id = ?", (uid,))
+                        conn.commit()
+                except Exception as e_uid:
+                    print(f"[WARN] No se pudo reasignar user_id local: {e_uid}")
+
+            # 3. Sincronizar registros restaurados hacia Firestore si está conectado
+            subidos_nube = 0
+            if db is not None and hasattr(db, "is_configured") and db.is_configured() and json_dump:
+                now_iso = datetime.datetime.now().isoformat()
+                batch = db._db.batch()
+                ops_in_batch = 0
+                for col, records in json_dump.items():
+                    if not isinstance(records, list):
+                        continue
+                    for rec in records:
+                        if not isinstance(rec, dict):
+                            continue
+                        rec_id = str(rec.get("_id") or rec.get("id") or "").strip()
+                        if not rec_id:
+                            continue
+                        payload = {
+                            k: v for k, v in rec.items()
+                            if k not in ("_id", "_updated_at")
+                        }
+                        if uid:
+                            payload["user_id"] = uid
+                        doc_ref = db._db.collection(col).document(rec_id)
+                        batch.set(doc_ref, payload, merge=True)
+                        ops_in_batch += 1
+                        subidos_nube += 1
+                        if ops_in_batch >= 400:
+                            batch.commit()
+                            batch = db._db.batch()
+                            ops_in_batch = 0
+                if ops_in_batch > 0:
+                    batch.commit()
+
+                # Asegurar también caché local consistente
+                with cache._get_connection() as conn:
+                    cur = conn.cursor()
+                    for col, records in json_dump.items():
+                        if not isinstance(records, list):
+                            continue
+                        for rec in records:
+                            if not isinstance(rec, dict):
+                                continue
+                            rec_id = str(rec.get("_id") or rec.get("id") or "").strip()
+                            if not rec_id:
+                                continue
+                            cur.execute(
+                                """
+                                INSERT OR REPLACE INTO local_records
+                                (collection_name, record_id, data_json, is_synced, is_deleted, updated_at, user_id)
+                                VALUES (?, ?, ?, 1, 0, ?, ?)
+                                """,
+                                (col, rec_id, json.dumps(rec, ensure_ascii=False, default=str), now_iso, uid),
+                            )
+                    conn.commit()
+
+            n_pac = len(json_dump.get("pacientes", []))
+            n_his = len(json_dump.get("historias_clinicas", []))
+            n_cit = len(json_dump.get("citas", []))
+            n_ses = len(json_dump.get("sesiones_clinicas", []))
+            n_rec = len(json_dump.get("recetas", []))
+            detalle = (
+                f"Pacientes: {n_pac} | Historias: {n_his} | Citas: {n_cit} | "
+                f"Sesiones: {n_ses} | Recetas: {n_rec}"
+            )
+            if subidos_nube:
+                return True, f"Respaldo restaurado y sincronizado en la nube.\n{detalle}"
+            return True, f"Base de datos local restaurada.\n{detalle}"
         except Exception as e:
             return False, f"Ocurrió un error al restaurar el respaldo: {e}"
 
