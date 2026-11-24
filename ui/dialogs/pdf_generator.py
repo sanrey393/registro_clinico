@@ -1756,3 +1756,323 @@ def generar_pdf_listado_pacientes(filepath: str, pacientes: list, filtros: dict 
 
     doc.build(story, canvasmaker=NumberedCanvas)
     return filepath
+
+
+def generar_pdf_listado_historias(filepath: str, historias: list, filtros: dict = None) -> str:
+    """
+    Genera un reporte PDF apaisado con el listado de Historias Clínicas filtrado,
+    usando el diseño editorial clínico PSIQUE.
+    """
+    historias = historias or []
+    filtros = filtros or {}
+
+    doc = SimpleDocTemplate(
+        filepath,
+        pagesize=landscape(letter),
+        leftMargin=36,
+        rightMargin=36,
+        topMargin=30,
+        bottomMargin=44,
+        title="Listado de Historias Clínicas - PSIQUE",
+        author="PSIQUE - Sistema de Gestión Clínico Psicológica",
+    )
+
+    story = []
+
+    C_PETROL = colors.HexColor("#0B2B2E")
+    C_TEAL = colors.HexColor("#0F766E")
+    C_TEAL_LIGHT = colors.HexColor("#F0FDFA")
+    C_MINT_BORDER = colors.HexColor("#99F6E4")
+    C_SLATE_DARK = colors.HexColor("#0F172A")
+    C_SLATE = colors.HexColor("#334155")
+    C_MUTED = colors.HexColor("#64748B")
+    C_SURFACE = colors.HexColor("#F8FAFC")
+    C_BORDER = colors.HexColor("#CBD5E1")
+    C_GRID = colors.HexColor("#E2E8F0")
+
+    st_brand = ParagraphStyle('HistLBrand', fontName='Helvetica-Bold', fontSize=18, leading=20, textColor=C_PETROL)
+    st_brand_sub = ParagraphStyle('HistLSub', fontName='Helvetica', fontSize=8.5, leading=11.5, textColor=C_MUTED)
+    st_pill_hdr = ParagraphStyle('HistLPillH', fontName='Helvetica-Bold', fontSize=8.5, leading=11, textColor=colors.white, alignment=1)
+    st_pill_meta = ParagraphStyle('HistLPillM', fontName='Helvetica', fontSize=8.2, leading=11.5, textColor=C_SLATE_DARK, alignment=1)
+    st_lbl_micro = ParagraphStyle('HistLMicro', fontName='Helvetica-Bold', fontSize=7.2, leading=9.5, textColor=C_MUTED)
+    st_th = ParagraphStyle('HistLTh', fontName='Helvetica-Bold', fontSize=8.0, leading=10.5, textColor=colors.white)
+    st_td = ParagraphStyle('HistLTd', fontName='Helvetica', fontSize=8.0, leading=10.8, textColor=C_SLATE_DARK)
+    st_td_bold = ParagraphStyle('HistLTdB', fontName='Helvetica-Bold', fontSize=8.0, leading=10.8, textColor=C_PETROL)
+    st_body = ParagraphStyle('HistLBody', fontName='Helvetica', fontSize=8.6, leading=12.5, textColor=C_SLATE)
+
+    def _esc(val, default="—"):
+        if val is None:
+            return default
+        s = str(val).strip()
+        return html.escape(s).replace("\n", " ") if s else default
+
+    logo_path = resource_path(os.path.join("data", "app_icon.png"))
+    logo_cell = Image(logo_path, width=38, height=38) if os.path.exists(logo_path) else Paragraph("<b>Ψ</b>", st_brand)
+
+    brand_block = Table(
+        [[logo_cell, [
+            Paragraph("PSIQUE", st_brand),
+            Paragraph("Sistema de Gestión Clínico Psicológica", st_brand_sub),
+            Paragraph("Reporte Filtrado de Historias Clínicas", st_brand_sub),
+        ]]],
+        colWidths=[46, 454],
+    )
+    brand_block.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0), ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 0), ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+    ]))
+
+    ahora_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+    meta_card = Table(
+        [
+            [Paragraph("HISTORIAL CLÍNICO", st_pill_hdr)],
+            [Paragraph(f"<b>Emisión:</b> {ahora_str}", st_pill_meta)],
+            [Paragraph(f"<b>Historias en reporte:</b> {len(historias)}", st_pill_meta)],
+        ],
+        colWidths=[216],
+    )
+    meta_card.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (0, 0), C_PETROL),
+        ('BACKGROUND', (0, 1), (0, -1), C_TEAL_LIGHT),
+        ('BOX', (0, 0), (-1, -1), 0.8, C_TEAL),
+        ('LINEBELOW', (0, 1), (0, 1), 0.4, C_MINT_BORDER),
+        ('TOPPADDING', (0, 0), (-1, -1), 4), ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6), ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+    ]))
+
+    t_header = Table([[brand_block, meta_card]], colWidths=[500, 220])
+    t_header.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0), ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+        ('TOPPADDING', (0, 0), (-1, -1), 0), ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+    ]))
+    story.append(t_header)
+    story.append(HRFlowable(width="100%", thickness=1.5, color=C_TEAL, spaceBefore=7, spaceAfter=9))
+
+    etiquetas = []
+    for k, lbl in [
+        ("busqueda", "Búsqueda"), ("pnf", "PNF"), ("trayecto", "Trayecto"),
+        ("seccion", "Sección"), ("anio", "Año"), ("condicion", "Condición/IPX"),
+        ("tipo", "Tipo Consulta"), ("rango_fechas", "Fechas"),
+    ]:
+        val = (filtros.get(k) or "").strip()
+        if val:
+            etiquetas.append(f"<b>{html.escape(lbl)}:</b> {html.escape(val)}")
+
+    resumen = "   •   ".join(etiquetas) if etiquetas else "Todas las historias clínicas registradas (sin filtros activos)"
+    t_filtros = Table(
+        [[[Paragraph("CRITERIOS DE FILTRADO APLICADOS", st_lbl_micro), Spacer(1, 2), Paragraph(resumen, st_body)]]],
+        colWidths=[720],
+    )
+    t_filtros.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), C_TEAL_LIGHT),
+        ('BOX', (0, 0), (-1, -1), 0.6, C_MINT_BORDER),
+        ('LINEBEFORE', (0, 0), (0, -1), 3.0, C_TEAL),
+        ('TOPPADDING', (0, 0), (-1, -1), 6), ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('LEFTPADDING', (0, 0), (-1, -1), 10), ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+    ]))
+    story.append(t_filtros)
+    story.append(Spacer(1, 10))
+
+    rows = [[
+        Paragraph("#", st_th),
+        Paragraph("N° Historia", st_th),
+        Paragraph("Cédula", st_th),
+        Paragraph("Paciente", st_th),
+        Paragraph("PNF / Programa", st_th),
+        Paragraph("Tray. / Secc.", st_th),
+        Paragraph("Condición / IPX", st_th),
+        Paragraph("Visitas", st_th),
+        Paragraph("Últ. Visita", st_th),
+        Paragraph("Tipo", st_th),
+    ]]
+
+    for idx, h in enumerate(historias, start=1):
+        tray = (h.get("trayecto") or "—").replace("Trayecto ", "T")
+        sec = h.get("seccion") or "—"
+        tray_sec = f"{tray} · {sec}" if tray != "—" or sec != "—" else "—"
+        rows.append([
+            Paragraph(str(idx), st_td),
+            Paragraph(_esc(h.get("num_historia")), st_td_bold),
+            Paragraph(_esc(h.get("cedula")), st_td),
+            Paragraph(_esc(h.get("nombre")), st_td_bold),
+            Paragraph(_esc(h.get("pnf"), "Sin asignar"), st_td),
+            Paragraph(_esc(tray_sec), st_td),
+            Paragraph(_esc(h.get("patologia"), "Sin especificar"), st_td),
+            Paragraph(_esc(h.get("visitas"), "0"), st_td),
+            Paragraph(_esc(h.get("ult_visita"), "—"), st_td),
+            Paragraph(_esc(h.get("tipo"), "—"), st_td),
+        ])
+
+    if len(rows) == 1:
+        rows.append([Paragraph("—", st_td)] * 10)
+
+    col_w = [24, 82, 70, 125, 96, 62, 115, 36, 56, 54]  # suma = 720
+    t_lista = Table(rows, colWidths=col_w, repeatRows=1)
+    t_lista.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), C_PETROL),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+        ('ALIGN', (7, 0), (8, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 5), ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4), ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, C_SURFACE]),
+        ('BOX', (0, 0), (-1, -1), 0.7, C_BORDER),
+        ('INNERGRID', (0, 0), (-1, -1), 0.4, C_GRID),
+    ]))
+    story.append(t_lista)
+
+    doc.build(story, canvasmaker=NumberedCanvas)
+    return filepath
+
+
+def generar_pdf_agenda_citas(filepath: str, citas: list, titulo_filtro: str = "") -> str:
+    """
+    Genera un reporte PDF con la Agenda de Citas (del día seleccionado o lista filtrada)
+    usando el diseño editorial clínico PSIQUE.
+    """
+    citas = citas or []
+
+    doc = SimpleDocTemplate(
+        filepath,
+        pagesize=letter,
+        leftMargin=36,
+        rightMargin=36,
+        topMargin=32,
+        bottomMargin=46,
+        title="Agenda de Citas - PSIQUE",
+        author="PSIQUE - Sistema de Gestión Clínico Psicológica",
+    )
+
+    story = []
+
+    C_PETROL = colors.HexColor("#0B2B2E")
+    C_TEAL = colors.HexColor("#0F766E")
+    C_TEAL_LIGHT = colors.HexColor("#F0FDFA")
+    C_MINT_BORDER = colors.HexColor("#99F6E4")
+    C_SLATE_DARK = colors.HexColor("#0F172A")
+    C_SLATE = colors.HexColor("#334155")
+    C_MUTED = colors.HexColor("#64748B")
+    C_SURFACE = colors.HexColor("#F8FAFC")
+    C_BORDER = colors.HexColor("#CBD5E1")
+    C_GRID = colors.HexColor("#E2E8F0")
+
+    st_brand = ParagraphStyle('AgBrand', fontName='Helvetica-Bold', fontSize=18, leading=20, textColor=C_PETROL)
+    st_brand_sub = ParagraphStyle('AgSub', fontName='Helvetica', fontSize=8.5, leading=11.5, textColor=C_MUTED)
+    st_pill_hdr = ParagraphStyle('AgPillH', fontName='Helvetica-Bold', fontSize=8.5, leading=11, textColor=colors.white, alignment=1)
+    st_pill_meta = ParagraphStyle('AgPillM', fontName='Helvetica', fontSize=8.2, leading=11.5, textColor=C_SLATE_DARK, alignment=1)
+    st_lbl_micro = ParagraphStyle('AgMicro', fontName='Helvetica-Bold', fontSize=7.2, leading=9.5, textColor=C_MUTED)
+    st_th = ParagraphStyle('AgTh', fontName='Helvetica-Bold', fontSize=8.3, leading=10.5, textColor=colors.white)
+    st_td = ParagraphStyle('AgTd', fontName='Helvetica', fontSize=8.3, leading=11.2, textColor=C_SLATE_DARK)
+    st_td_bold = ParagraphStyle('AgTdB', fontName='Helvetica-Bold', fontSize=8.3, leading=11.2, textColor=C_PETROL)
+    st_body = ParagraphStyle('AgBody', fontName='Helvetica', fontSize=8.6, leading=12.5, textColor=C_SLATE)
+
+    def _esc(val, default="—"):
+        if val is None:
+            return default
+        s = str(val).strip()
+        return html.escape(s).replace("\n", " ") if s else default
+
+    logo_path = resource_path(os.path.join("data", "app_icon.png"))
+    logo_cell = Image(logo_path, width=40, height=40) if os.path.exists(logo_path) else Paragraph("<b>Ψ</b>", st_brand)
+
+    brand_block = Table(
+        [[logo_cell, [
+            Paragraph("PSIQUE", st_brand),
+            Paragraph("Sistema de Gestión Clínico Psicológica", st_brand_sub),
+            Paragraph("Agenda y Programación de Citas Clínicas", st_brand_sub),
+        ]]],
+        colWidths=[48, 292],
+    )
+    brand_block.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0), ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 0), ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+    ]))
+
+    ahora_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+    meta_card = Table(
+        [
+            [Paragraph("AGENDA DE CITAS", st_pill_hdr)],
+            [Paragraph(f"<b>Emisión:</b> {ahora_str}", st_pill_meta)],
+            [Paragraph(f"<b>Citas en agenda:</b> {len(citas)}", st_pill_meta)],
+        ],
+        colWidths=[192],
+    )
+    meta_card.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (0, 0), C_PETROL),
+        ('BACKGROUND', (0, 1), (0, -1), C_TEAL_LIGHT),
+        ('BOX', (0, 0), (-1, -1), 0.8, C_TEAL),
+        ('LINEBELOW', (0, 1), (0, 1), 0.4, C_MINT_BORDER),
+        ('TOPPADDING', (0, 0), (-1, -1), 4), ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6), ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+    ]))
+
+    t_header = Table([[brand_block, meta_card]], colWidths=[344, 196])
+    t_header.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0), ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+        ('TOPPADDING', (0, 0), (-1, -1), 0), ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+    ]))
+    story.append(t_header)
+    story.append(HRFlowable(width="100%", thickness=1.5, color=C_TEAL, spaceBefore=8, spaceAfter=10))
+
+    alcance = (titulo_filtro or "").strip() or "Todas las citas programadas"
+    t_alcance = Table(
+        [[[Paragraph("ALCANCE DE LA AGENDA", st_lbl_micro), Spacer(1, 2), Paragraph(html.escape(alcance), st_body)]]],
+        colWidths=[540],
+    )
+    t_alcance.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), C_TEAL_LIGHT),
+        ('BOX', (0, 0), (-1, -1), 0.6, C_MINT_BORDER),
+        ('LINEBEFORE', (0, 0), (0, -1), 3.0, C_TEAL),
+        ('TOPPADDING', (0, 0), (-1, -1), 6), ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('LEFTPADDING', (0, 0), (-1, -1), 10), ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+    ]))
+    story.append(t_alcance)
+    story.append(Spacer(1, 10))
+
+    rows = [[
+        Paragraph("#", st_th),
+        Paragraph("Fecha", st_th),
+        Paragraph("Hora", st_th),
+        Paragraph("Paciente", st_th),
+        Paragraph("Tipo de Consulta", st_th),
+        Paragraph("Estado", st_th),
+        Paragraph("Notas", st_th),
+    ]]
+
+    for idx, c in enumerate(citas, start=1):
+        rows.append([
+            Paragraph(str(idx), st_td),
+            Paragraph(_esc(c.get("fecha")), st_td_bold),
+            Paragraph(_esc(c.get("hora")), st_td),
+            Paragraph(_esc(c.get("paciente_nombre")), st_td_bold),
+            Paragraph(_esc(c.get("tipo")), st_td),
+            Paragraph(_esc(c.get("estado")), st_td),
+            Paragraph(_esc(c.get("notas")), st_td),
+        ])
+
+    if len(rows) == 1:
+        rows.append([Paragraph("—", st_td)] * 7)
+
+    col_w = [24, 62, 44, 130, 96, 72, 112]  # suma = 540
+    t_citas = Table(rows, colWidths=col_w, repeatRows=1)
+    t_citas.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), C_PETROL),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+        ('ALIGN', (1, 0), (2, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 5), ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('LEFTPADDING', (0, 0), (-1, -1), 5), ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, C_SURFACE]),
+        ('BOX', (0, 0), (-1, -1), 0.7, C_BORDER),
+        ('INNERGRID', (0, 0), (-1, -1), 0.4, C_GRID),
+    ]))
+    story.append(t_citas)
+
+    doc.build(story, canvasmaker=NumberedCanvas)
+    return filepath

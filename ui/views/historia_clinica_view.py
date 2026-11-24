@@ -274,6 +274,12 @@ class HistoriaClinicaView(QWidget):
         header.addWidget(t)
         header.addStretch()
 
+        btn_imprimir_lista = QPushButton("🖨 Imprimir Lista (PDF)")
+        btn_imprimir_lista.setObjectName("btnSecondary")
+        btn_imprimir_lista.setToolTip("Imprimir en PDF la lista actual de historias según los filtros aplicados")
+        btn_imprimir_lista.clicked.connect(self._imprimir_lista_filtrada)
+        header.addWidget(btn_imprimir_lista)
+
         btn_nueva = QPushButton("➕ Nueva Historia")
         btn_nueva.setObjectName("btnSuccess")
         btn_nueva.clicked.connect(self.focus_new_form)
@@ -2244,6 +2250,72 @@ class HistoriaClinicaView(QWidget):
             self.lbl_count.setText(f"{total} historia(s) registrada(s)")
         else:
             self.lbl_count.setText(f"Mostrando {visibles} de {total} historia(s)")
+
+    def _imprimir_lista_filtrada(self):
+        """Exporta a PDF las historias clínicas actualmente visibles según los filtros."""
+        historias = []
+        for row in range(self.table.rowCount()):
+            if self.table.isRowHidden(row):
+                continue
+            def _cell(c):
+                it = self.table.item(row, c)
+                return it.text().strip() if it else ""
+            historias.append({
+                "num_historia": _cell(0),
+                "cedula": _cell(1),
+                "nombre": _cell(2),
+                "pnf": _cell(3),
+                "trayecto": _cell(4),
+                "seccion": _cell(5),
+                "anio_academico": _cell(6),
+                "patologia": _cell(7),
+                "visitas": _cell(8),
+                "ult_visita": _cell(9),
+                "tipo": _cell(10),
+            })
+
+        if not historias:
+            QMessageBox.warning(self, "Sin resultados", "No hay historias visibles para imprimir con los filtros actuales.")
+            return
+
+        filtros = {}
+        q = self.search_input.text().strip()
+        if q:
+            filtros["busqueda"] = q
+        if self.combo_filtro_pnf.currentText() != "Todos PNF":
+            filtros["pnf"] = self.combo_filtro_pnf.currentText()
+        if self.combo_filtro_tray.currentText() != "Todos Tray.":
+            filtros["trayecto"] = self.combo_filtro_tray.currentText()
+        if self.combo_filtro_sec.currentText() != "Todas Secc.":
+            filtros["seccion"] = self.combo_filtro_sec.currentText()
+        if self.combo_filtro_anio.currentText() != "Todos Años":
+            filtros["anio"] = self.combo_filtro_anio.currentText()
+        if hasattr(self, "combo_filtro_patologia") and self.combo_filtro_patologia.currentText() != "Condición / IPX: Todas":
+            filtros["condicion"] = self.combo_filtro_patologia.currentText()
+        if self.combo_filtro_tipo.currentText() != "Consulta: Todas":
+            filtros["tipo"] = self.combo_filtro_tipo.currentText()
+        if self.chk_filtro_fecha.isChecked():
+            filtros["rango_fechas"] = (
+                f"{self.date_filtro_desde.date().toString('dd/MM/yyyy')} al "
+                f"{self.date_filtro_hasta.date().toString('dd/MM/yyyy')}"
+            )
+
+        fecha_hoy = QDate.currentDate().toString("yyyyMMdd")
+        default_name = f"Listado_Historias_PSIQUE_{fecha_hoy}.pdf"
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Guardar Listado de Historias Clínicas en PDF", default_name, "Documento PDF (*.pdf)"
+        )
+        if not path:
+            return
+        try:
+            from ui.dialogs.pdf_generator import generar_pdf_listado_historias
+            generar_pdf_listado_historias(path, historias, filtros)
+            QMessageBox.information(
+                self, "✅ PDF Generado",
+                f"Se exportaron {len(historias)} historia(s) clínica(s) al PDF:\n{path}"
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Error al generar PDF", f"No se pudo crear el PDF:\n{e}")
 
     def _limpiar_filtros(self):
         for w in (

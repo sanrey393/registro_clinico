@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit,
     QFrame, QMessageBox, QComboBox, QTimeEdit,
     QTextEdit, QTabWidget, QGridLayout, QSizePolicy,
-    QGraphicsDropShadowEffect, QScrollArea, QListView
+    QGraphicsDropShadowEffect, QScrollArea, QListView, QFileDialog
 )
 from PyQt6.QtCore import Qt, QDate, QTime, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPalette
@@ -259,6 +259,11 @@ class AppointmentsView(QWidget):
             dot.setStyleSheet(f"color: {color}; font-size: 11px;")
             legend.addWidget(dot)
         legend.addStretch()
+        btn_print_day = QPushButton("🖨  Imprimir Día (PDF)")
+        btn_print_day.setObjectName("btnSecondary")
+        btn_print_day.setToolTip("Imprimir en PDF las citas del día seleccionado en el calendario")
+        btn_print_day.clicked.connect(lambda: self._imprimir_agenda(solo_dia=True))
+        legend.addWidget(btn_print_day)
         lay.addLayout(legend)
         return w
 
@@ -295,8 +300,13 @@ class AppointmentsView(QWidget):
         btn_eliminar = QPushButton("🗑  Eliminar")
         btn_eliminar.setObjectName("btnDanger")
         btn_eliminar.clicked.connect(self._eliminar)
+        btn_imprimir_ag = QPushButton("🖨  Imprimir Agenda (PDF)")
+        btn_imprimir_ag.setObjectName("btnSecondary")
+        btn_imprimir_ag.setToolTip("Exportar e imprimir en PDF las citas visibles en la agenda")
+        btn_imprimir_ag.clicked.connect(lambda: self._imprimir_agenda(solo_dia=False))
         btn_row.addWidget(btn_nueva)
         btn_row.addWidget(btn_eliminar)
+        btn_row.addWidget(btn_imprimir_ag)
         btn_row.addStretch()
         self.lbl_count = QLabel("0 citas")
         self.lbl_count.setStyleSheet("color:#6c757d; font-size:12px;")
@@ -669,6 +679,61 @@ class AppointmentsView(QWidget):
                 for col in range(5)
             )
             self.table.setRowHidden(row, not visible)
+
+    def _imprimir_agenda(self, solo_dia: bool = False):
+        """Exporta a PDF la agenda de citas (del día seleccionado o de la lista filtrada)."""
+        citas_map = {str(c.get("id", "")): c for c in getattr(self, "_citas_cache", [])}
+        citas_export = []
+
+        if solo_dia:
+            fecha_sel = getattr(self, "_selected_date", None)
+            if not fecha_sel and hasattr(self, "lbl_day_title"):
+                # Intentar usar la fecha seleccionada en el calendario o la fecha de hoy
+                fecha_sel = QDate.currentDate().toString("dd/MM/yyyy")
+            for c in getattr(self, "_citas_cache", []):
+                if c.get("fecha", "") == fecha_sel:
+                    citas_export.append(c)
+            alcance = f"Citas del día {fecha_sel}"
+            slug = f"Agenda_Dia_{str(fecha_sel).replace('/', '')}"
+        else:
+            for row in range(self.table.rowCount()):
+                if self.table.isRowHidden(row):
+                    continue
+                item0 = self.table.item(row, 0)
+                cid = str(item0.data(Qt.ItemDataRole.UserRole) or "") if item0 else ""
+                if cid and cid in citas_map:
+                    citas_export.append(citas_map[cid])
+                else:
+                    citas_export.append({
+                        "paciente_nombre": self.table.item(row, 0).text() if self.table.item(row, 0) else "",
+                        "fecha": self.table.item(row, 1).text() if self.table.item(row, 1) else "",
+                        "hora": self.table.item(row, 2).text() if self.table.item(row, 2) else "",
+                        "tipo": self.table.item(row, 3).text() if self.table.item(row, 3) else "",
+                        "estado": self.table.item(row, 4).text() if self.table.item(row, 4) else "",
+                        "notas": "",
+                    })
+            q = self.search_input.text().strip()
+            alcance = f"Filtro aplicado: '{q}'" if q else "Agenda general de citas"
+            slug = f"Agenda_Citas_PSIQUE_{QDate.currentDate().toString('yyyyMMdd')}"
+
+        if not citas_export:
+            QMessageBox.warning(self, "Sin citas", "No hay citas para imprimir en la vista seleccionada.")
+            return
+
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Guardar Agenda de Citas en PDF", f"{slug}.pdf", "Documento PDF (*.pdf)"
+        )
+        if not path:
+            return
+        try:
+            from ui.dialogs.pdf_generator import generar_pdf_agenda_citas
+            generar_pdf_agenda_citas(path, citas_export, alcance)
+            QMessageBox.information(
+                self, "✅ PDF Generado",
+                f"Se exportaron {len(citas_export)} cita(s) al PDF:\n{path}"
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Error al generar PDF", f"No se pudo crear el PDF:\n{e}")
 
     def clear_form(self):
         self._cita_id = None
