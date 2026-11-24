@@ -112,8 +112,12 @@ service cloud.firestore {
 
     // ── Catálogos Diagnósticos ────────────────────────────────
     match /diagnosticos_catalogo/{diagId} {
-      allow read:  if isAuthenticated();
-      allow write: if isAdmin();
+      allow read:   if isAuthenticated() && (
+        resource.data.get("is_global", false) == true ||
+        isOwner(resource)
+      );
+      allow create: if isAuthenticated() && request.resource.data.user_id == request.auth.uid;
+      allow update, delete: if isAuthenticated() && (isOwner(resource) || isAdmin());
     }
   }
 }

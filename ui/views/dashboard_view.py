@@ -2,9 +2,10 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QFrame, QGridLayout, QSizePolicy, QSpacerItem
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QPropertyAnimation, QParallelAnimationGroup, QEasingCurve, QSize
 from PyQt6.QtGui import QFont, QPixmap, QPainter, QColor, QPainterPath
 import urllib.request
+from ui.widgets.app_icons import svg_icon, svg_pixmap
 
 
 class DashboardView(QWidget):
@@ -18,6 +19,10 @@ class DashboardView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._user_data = {}
+        self._sidebar_collapsed = False
+        self._sidebar_expanded_width = 240
+        self._sidebar_collapsed_width = 68
+        self._sidebar_anim = None
         self.setup_ui()
 
     # ── Construcción de UI ──────────────────────────────────────
@@ -33,60 +38,80 @@ class DashboardView(QWidget):
     # ── Sidebar ─────────────────────────────────────────────────
 
     def _build_sidebar(self):
-        sidebar = QFrame()
-        sidebar.setObjectName("sidebar")
-        sidebar.setFixedWidth(240)
-        sidebar.setStyleSheet("""
+        self.sidebar = QFrame()
+        self.sidebar.setObjectName("sidebar")
+        self.sidebar.setMinimumWidth(self._sidebar_expanded_width)
+        self.sidebar.setMaximumWidth(self._sidebar_expanded_width)
+        self.sidebar.setStyleSheet("""
             QFrame#sidebar {
                 background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-                    stop:0 #1a2744, stop:1 #0f1729);
-                border-right: 1px solid #243054;
+                    stop:0 #132a2e, stop:1 #0d1f22);
+                border-right: 1px solid #1e3a3f;
             }
         """)
 
-        layout = QVBoxLayout(sidebar)
+        layout = QVBoxLayout(self.sidebar)
         layout.setContentsMargins(0, 0, 0, 20)
         layout.setSpacing(0)
 
-        # Logo / App name
+        # Logo / App name con icono SVG
         logo_area = QWidget()
         logo_area.setStyleSheet("background: transparent;")
-        logo_layout = QVBoxLayout(logo_area)
-        logo_layout.setContentsMargins(20, 28, 20, 24)
+        logo_layout = QHBoxLayout(logo_area)
+        logo_layout.setContentsMargins(18, 22, 16, 18)
+        logo_layout.setSpacing(10)
 
-        app_label = QLabel("🏥 Registro\nClínico")
-        app_label.setStyleSheet("""
+        self.app_logo_icon = QLabel()
+        from core.app_paths import resource_path
+        import os
+        icon_png = resource_path(os.path.join("data", "app_icon.png"))
+        if os.path.exists(icon_png):
+            pix = QPixmap(icon_png).scaled(
+                30, 30, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+            )
+            self.app_logo_icon.setPixmap(pix)
+            self.app_logo_icon.setStyleSheet(
+                "background: #ffffff; border-radius: 7px; padding: 2px;"
+            )
+            self.app_logo_icon.setFixedSize(34, 34)
+        else:
+            self.app_logo_icon.setPixmap(svg_pixmap("heart-pulse", color="#2dd4bf", size=26))
+            self.app_logo_icon.setStyleSheet("background: transparent;")
+            self.app_logo_icon.setFixedSize(28, 28)
+
+        self.app_label = QLabel("PSIQUE\nClínica")
+        self.app_label.setStyleSheet("""
             color: #ffffff;
-            font-size: 18px;
-            font-weight: bold;
-            line-height: 1.4;
+            font-size: 17px;
+            font-weight: 700;
+            line-height: 1.3;
             background: transparent;
         """)
-        logo_layout.addWidget(app_label)
+        logo_layout.addWidget(self.app_logo_icon)
+        logo_layout.addWidget(self.app_label, 1)
         layout.addWidget(logo_area)
 
         # Separator
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("background: #243054; max-height: 1px; margin: 0 20px;")
+        sep.setStyleSheet("background: #1e3a3f; max-height: 1px; margin: 0 14px;")
         layout.addWidget(sep)
         layout.addSpacing(12)
 
-        # Nav items
+        # Nav items con iconos SVG vectoriales
         modules = [
-            ("👤", "Identificación"),  # index 0
-            ("📋", "Historias"),       # index 1
-            ("📅", "Agenda"),          # index 2
-            ("🏥", "Sesiones"),        # index 3
-            ("💊", "Fármacos"),        # index 4
-            ("🧾", "Facturación"),     # index 5
-            ("📁", "Documentos"),      # index 6 (Pendiente)
+            ("user-check", "Identificación"),  # index 0
+            ("file-text", "Historias"),        # index 1
+            ("calendar", "Agenda"),            # index 2
+            ("bar-chart", "Bitácora"),         # index 3
+            ("pill", "Fármacos"),              # index 4
         ]
-        
+
+        self._nav_items = modules
         self.nav_buttons = []
-        for i, (icon, label) in enumerate(modules):
-            btn = self._nav_button(icon, label, active=(i==0))
-            # Usar un lambda captureando i
+        for i, (icon_name, label) in enumerate(modules):
+            btn = self._nav_button(icon_name, label, active=(i == 0))
+            btn.setToolTip(label)
             btn.clicked.connect(lambda checked, idx=i: self._switch_tab(idx))
             self.nav_buttons.append(btn)
             layout.addWidget(btn)
@@ -96,7 +121,7 @@ class DashboardView(QWidget):
         # Separator
         sep2 = QFrame()
         sep2.setFrameShape(QFrame.Shape.HLine)
-        sep2.setStyleSheet("background: #243054; max-height: 1px; margin: 0 20px;")
+        sep2.setStyleSheet("background: #1e3a3f; max-height: 1px; margin: 0 14px;")
         layout.addWidget(sep2)
         layout.addSpacing(12)
 
@@ -104,50 +129,111 @@ class DashboardView(QWidget):
         self.user_sidebar_widget = self._build_user_sidebar_box()
         layout.addWidget(self.user_sidebar_widget)
 
-        return sidebar
+        return self.sidebar
+
+    def toggle_sidebar(self):
+        """Despliega o contrae suavemente la barra lateral para aprovechar el ancho."""
+        self._sidebar_collapsed = not self._sidebar_collapsed
+        start_w = self.sidebar.width()
+        end_w = self._sidebar_collapsed_width if self._sidebar_collapsed else self._sidebar_expanded_width
+
+        if self._sidebar_collapsed:
+            self.app_label.setVisible(False)
+            self.user_text_widget.setVisible(False)
+            for btn in self.nav_buttons:
+                btn.setText("")
+        else:
+            self.app_label.setVisible(True)
+            self.user_text_widget.setVisible(True)
+            for btn, (_icon_name, label) in zip(self.nav_buttons, self._nav_items):
+                btn.setText(f"  {label}")
+
+        current_idx = self.main_stack.currentIndex() if hasattr(self, "main_stack") else 0
+        for i, btn in enumerate(self.nav_buttons):
+            self._set_btn_active_style(btn, i == current_idx, i)
+
+        if hasattr(self, "btn_toggle_sidebar"):
+            self.btn_toggle_sidebar.setIcon(
+                svg_icon("menu" if self._sidebar_collapsed else "chevron-left", color="#1e293b", size=18)
+            )
+            self.btn_toggle_sidebar.setToolTip(
+                "Expandir menú lateral" if self._sidebar_collapsed else "Contraer menú lateral"
+            )
+
+        anim_min = QPropertyAnimation(self.sidebar, b"minimumWidth")
+        anim_min.setDuration(180)
+        anim_min.setStartValue(start_w)
+        anim_min.setEndValue(end_w)
+        anim_min.setEasingCurve(QEasingCurve.Type.InOutCubic)
+
+        anim_max = QPropertyAnimation(self.sidebar, b"maximumWidth")
+        anim_max.setDuration(180)
+        anim_max.setStartValue(start_w)
+        anim_max.setEndValue(end_w)
+        anim_max.setEasingCurve(QEasingCurve.Type.InOutCubic)
+
+        self._sidebar_anim = QParallelAnimationGroup(self)
+        self._sidebar_anim.addAnimation(anim_min)
+        self._sidebar_anim.addAnimation(anim_max)
+        self._sidebar_anim.start()
 
     def _switch_tab(self, index: int):
         # Evitar errores de índice
         if index < self.main_stack.count():
             self.main_stack.setCurrentIndex(index)
+        if index == 3 and hasattr(self, "sessions_view") and hasattr(self.sessions_view, "load_data"):
+            try:
+                self.sessions_view.load_data()
+            except Exception as e:
+                print(f"[WARN] Error refrescando bitácora: {e}")
         
         # Actualizar estilos visuales (active)
         for i, btn in enumerate(self.nav_buttons):
-            self._set_btn_active_style(btn, i == index)
+            self._set_btn_active_style(btn, i == index, i)
 
-    def _set_btn_active_style(self, btn, active):
-        active_style = """
-            QPushButton {
+    def _set_btn_active_style(self, btn, active, index: int = -1):
+        collapsed = getattr(self, "_sidebar_collapsed", False)
+        align = "center" if collapsed else "left"
+        pad = "0px" if collapsed else "18px"
+        active_style = f"""
+            QPushButton {{
                 background: rgba(255,255,255,0.12);
                 color: #ffffff;
                 border: none;
-                border-left: 3px solid #4d9ef7;
-                text-align: left;
-                font-size: 14px;
-                padding-left: 18px;
+                border-left: 3px solid #2dd4bf;
+                text-align: {align};
+                font-size: 13.5px;
+                font-weight: 600;
+                padding-left: {pad};
                 border-radius: 0;
-            }
+            }}
         """
-        normal_style = """
-            QPushButton {
+        normal_style = f"""
+            QPushButton {{
                 background: transparent;
-                color: #9baacf;
+                color: #9bb5b8;
                 border: none;
                 border-left: 3px solid transparent;
-                text-align: left;
-                font-size: 14px;
-                padding-left: 18px;
+                text-align: {align};
+                font-size: 13.5px;
+                font-weight: 500;
+                padding-left: {pad};
                 border-radius: 0;
-            }
-            QPushButton:hover {
+            }}
+            QPushButton:hover {{
                 background: rgba(255,255,255,0.07);
-                color: #d0d9f0;
-            }
+                color: #e2f1f2;
+            }}
         """
         btn.setStyleSheet(active_style if active else normal_style)
+        if 0 <= index < len(getattr(self, "_nav_items", [])):
+            icon_name = self._nav_items[index][0]
+            btn.setIcon(svg_icon(icon_name, color="#ffffff" if active else "#9bb5b8", size=18))
 
-    def _nav_button(self, icon: str, label: str, active: bool = False) -> QPushButton:
-        btn = QPushButton(f"  {icon}  {label}")
+    def _nav_button(self, icon_name: str, label: str, active: bool = False) -> QPushButton:
+        btn = QPushButton(f"  {label}")
+        btn.setIcon(svg_icon(icon_name, color="#ffffff" if active else "#9bb5b8", size=18))
+        btn.setIconSize(QSize(18, 18))
         btn.setFixedHeight(44)
         self._set_btn_active_style(btn, active)
         return btn
@@ -174,9 +260,9 @@ class DashboardView(QWidget):
         layout.addWidget(self.avatar_label)
 
         # Nombre + email
-        text_widget = QWidget()
-        text_widget.setStyleSheet("background: transparent;")
-        text_layout = QVBoxLayout(text_widget)
+        self.user_text_widget = QWidget()
+        self.user_text_widget.setStyleSheet("background: transparent;")
+        text_layout = QVBoxLayout(self.user_text_widget)
         text_layout.setContentsMargins(0, 0, 0, 0)
         text_layout.setSpacing(1)
 
@@ -190,7 +276,7 @@ class DashboardView(QWidget):
 
         text_layout.addWidget(self.sidebar_name_label)
         text_layout.addWidget(self.sidebar_email_label)
-        layout.addWidget(text_widget, 1)
+        layout.addWidget(self.user_text_widget, 1)
 
         return box
 
@@ -200,7 +286,7 @@ class DashboardView(QWidget):
         from PyQt6.QtWidgets import QStackedWidget
         
         main = QWidget()
-        main.setStyleSheet("background: #f0f3f8;")
+        main.setObjectName("dashboardMain")
         layout = QVBoxLayout(main)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -235,7 +321,6 @@ class DashboardView(QWidget):
         scroll.setWidget(self.identificacion_view)
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(scroll.Shape.NoFrame)
-        scroll.setStyleSheet("background: #f0f3f8;")
         # Reemplazar el placeholder en índice 0
         self.main_stack.removeWidget(self._home_placeholder)
         self.main_stack.insertWidget(0, scroll)
@@ -252,6 +337,126 @@ class DashboardView(QWidget):
         self.main_stack.addWidget(self.sessions_view)      # index 3
         self.main_stack.addWidget(self.farmacos_view)      # index 4
         self.main_stack.addWidget(self.billing_view)       # index 5
+
+        # Sincronización en vivo entre Identificación ↔ Historia Clínica ↔ Agenda
+        self.identificacion_view.paciente_guardado.connect(self._on_paciente_sincronizado)
+        self.identificacion_view.paciente_eliminado.connect(self._on_paciente_sincronizado)
+        self.identificacion_view.abrir_historia_requested.connect(self._abrir_historia_de_paciente)
+        self.identificacion_view.agendar_cita_requested.connect(
+            lambda p: self._abrir_agenda_de_paciente_id(p.get("id", ""))
+        )
+        self.identificacion_view.farmacos_requested.connect(
+            lambda p: self._abrir_farmacos_de_paciente_id(p.get("id", ""))
+        )
+        if hasattr(self.patients_view, "paciente_sincronizado"):
+            self.patients_view.paciente_sincronizado.connect(self._on_historia_sincronizo_paciente)
+        if hasattr(self.patients_view, "agendar_cita_requested"):
+            self.patients_view.agendar_cita_requested.connect(self._abrir_agenda_de_paciente_id)
+        if hasattr(self.patients_view, "farmacos_requested"):
+            self.patients_view.farmacos_requested.connect(self._abrir_farmacos_de_paciente_id)
+        if hasattr(self.appointments_view, "cita_actualizada"):
+            self.appointments_view.cita_actualizada.connect(self._on_cita_actualizada)
+        if hasattr(self.sessions_view, "abrir_historia_requested"):
+            self.sessions_view.abrir_historia_requested.connect(
+                lambda pid: self._abrir_historia_de_paciente({"id": pid})
+            )
+        if hasattr(self.sessions_view, "sesion_actualizada"):
+            self.sessions_view.sesion_actualizada.connect(self.patients_view.load_data)
+        if hasattr(self.patients_view, "visita_actualizada"):
+            self.patients_view.visita_actualizada.connect(self.sessions_view.load_data)
+        if hasattr(self.farmacos_view, "agendar_control_requested"):
+            self.farmacos_view.agendar_control_requested.connect(self._abrir_agenda_de_paciente_id)
+        if hasattr(self.farmacos_view, "receta_actualizada"):
+            self.farmacos_view.receta_actualizada.connect(lambda _d: self.patients_view.load_data())
+
+    def _abrir_farmacos_de_paciente_id(self, paciente_id: str):
+        """Cambia a Fármacos y preselecciona al paciente."""
+        self._switch_tab(4)
+        if hasattr(self.farmacos_view, "load_data"):
+            self.farmacos_view.load_data()
+        if hasattr(self.farmacos_view, "seleccionar_paciente_por_id"):
+            self.farmacos_view.seleccionar_paciente_por_id(paciente_id)
+
+    def _abrir_agenda_de_paciente_id(self, paciente_id: str):
+        """Cambia a Agenda y preselecciona al paciente."""
+        self._switch_tab(2)
+        if hasattr(self.appointments_view, "load_data"):
+            self.appointments_view.load_data()
+        if hasattr(self.appointments_view, "seleccionar_paciente_por_id"):
+            self.appointments_view.seleccionar_paciente_por_id(paciente_id)
+
+    def _on_cita_actualizada(self, cita_data: dict):
+        """Sincroniza notas de citas completadas con Historia Clínica y recarga vistas."""
+        try:
+            if (
+                not cita_data.get("deleted")
+                and cita_data.get("estado") == "Completada"
+                and cita_data.get("notas")
+                and cita_data.get("paciente_id")
+                and hasattr(self.patients_view, "db")
+                and hasattr(self.patients_view.db, "crear_sesion")
+            ):
+                db = self.patients_view.db
+                existentes = db.obtener_sesiones_por_paciente(cita_data["paciente_id"]) if hasattr(db, "obtener_sesiones_por_paciente") else []
+                ya_existe = any(
+                    s.get("fecha") == cita_data.get("fecha") and s.get("hora") == cita_data.get("hora")
+                    for s in existentes
+                )
+                if not ya_existe:
+                    db.crear_sesion({
+                        "paciente_id": cita_data["paciente_id"],
+                        "paciente_nombre": cita_data.get("paciente_nombre", ""),
+                        "paciente_cedula": cita_data.get("paciente_cedula", ""),
+                        "fecha": cita_data.get("fecha", ""),
+                        "hora": cita_data.get("hora", ""),
+                        "tipo": cita_data.get("tipo", "Sucesiva"),
+                        "evolucion": cita_data.get("notas", ""),
+                        "notas": cita_data.get("notas", ""),
+                        "nota_recordatorio": "",
+                    })
+        except Exception as e:
+            print(f"[WARN] Sincronizando nota de cita con Historia: {e}")
+
+        for view_name in ("patients_view", "sessions_view"):
+            view = getattr(self, view_name, None)
+            if view and hasattr(view, "load_data"):
+                try:
+                    view.load_data()
+                except Exception as e:
+                    print(f"[WARN] Error sincronizando {view_name}: {e}")
+
+    def _on_historia_sincronizo_paciente(self, *_args):
+        """Recarga Identificación y módulos relacionados cuando Historia Clínica crea/actualiza un paciente."""
+        if hasattr(self.identificacion_view, "_cargar_pacientes"):
+            try:
+                self.identificacion_view._cargar_pacientes()
+            except Exception as e:
+                print(f"[WARN] Error sincronizando identificacion_view: {e}")
+        for view_name in ("appointments_view", "sessions_view"):
+            view = getattr(self, view_name, None)
+            if view and hasattr(view, "load_data"):
+                try:
+                    view.load_data()
+                except Exception as e:
+                    print(f"[WARN] Error sincronizando {view_name}: {e}")
+
+    def _on_paciente_sincronizado(self, *_args):
+        """Recarga la caché de pacientes en Historia Clínica y módulos relacionados."""
+        for view_name in ("patients_view", "appointments_view", "sessions_view"):
+            view = getattr(self, view_name, None)
+            if view and hasattr(view, "load_data"):
+                try:
+                    view.load_data()
+                except Exception as e:
+                    print(f"[WARN] Error sincronizando {view_name}: {e}")
+
+    def _abrir_historia_de_paciente(self, paciente: dict):
+        """Cambia a Historia Clínica y selecciona automáticamente al paciente."""
+        self._switch_tab(1)
+        if hasattr(self.patients_view, "load_data"):
+            self.patients_view.load_data()
+        if hasattr(self.patients_view, "seleccionar_paciente_por_id"):
+            self.patients_view.seleccionar_paciente_por_id(paciente.get("id", ""))
 
     def reload_all_data(self):
         """Recarga todas las vistas secundarias con los datos aislados del usuario actual."""
@@ -344,10 +549,20 @@ class DashboardView(QWidget):
         bar.setGraphicsEffect(shadow)
 
         layout = QHBoxLayout(bar)
-        layout.setContentsMargins(24, 0, 24, 0)
+        layout.setContentsMargins(16, 0, 24, 0)
         layout.setSpacing(12)
 
-        title = QLabel("Sistema de Registro Clínico — Psicología")
+        self.btn_toggle_sidebar = QPushButton("")
+        self.btn_toggle_sidebar.setObjectName("btnSecondary")
+        self.btn_toggle_sidebar.setIcon(svg_icon("chevron-left", color="#475569", size=18))
+        self.btn_toggle_sidebar.setIconSize(QSize(18, 18))
+        self.btn_toggle_sidebar.setFixedSize(36, 36)
+        self.btn_toggle_sidebar.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_toggle_sidebar.setToolTip("Contraer menú lateral")
+        self.btn_toggle_sidebar.clicked.connect(self.toggle_sidebar)
+        layout.addWidget(self.btn_toggle_sidebar)
+
+        title = QLabel("PSIQUE — Sistema de Gestión Clínico Psicológica")
         title.setObjectName("topbarTitle")
         layout.addWidget(title)
         layout.addStretch()
@@ -376,33 +591,44 @@ class DashboardView(QWidget):
         layout.addWidget(self.update_btn)
 
         # Botón Toggle Theme
-        self.theme_btn = QPushButton("🌙 Modo Oscuro")
-        self.theme_btn.setObjectName("themeBtn")
-        self.theme_btn.setStyleSheet("""
-            QPushButton#themeBtn {
-                background: transparent;
-                color: #4d9ef7;
-                border: 1px solid #4d9ef7;
-                border-radius: 6px;
-                font-size: 13px;
-                padding: 6px 12px;
-            }
-            QPushButton#themeBtn:hover {
-                background: #4d9ef7;
-                color: white;
-            }
-        """)
+        self.theme_btn = QPushButton(" Modo Oscuro")
+        self.theme_btn.setObjectName("btnSecondary")
+        self.theme_btn.setIcon(svg_icon("moon", color="#475569", size=15))
+        self.theme_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.theme_btn.clicked.connect(self._on_theme_toggled)
         layout.addWidget(self.theme_btn)
 
         # Botón Logout
-        logout_btn = QPushButton("⬅  Cerrar sesión")
-        logout_btn.setObjectName("logoutBtn")
-        logout_btn.clicked.connect(self.logout_requested.emit)
-        layout.addWidget(logout_btn)
+        self.logout_btn = QPushButton(" Cerrar sesión")
+        self.logout_btn.setObjectName("logoutBtn")
+        self.logout_btn.setIcon(svg_icon("log-out", color="#dc2626", size=15))
+        self.logout_btn.clicked.connect(self.logout_requested.emit)
+        layout.addWidget(self.logout_btn)
 
         self._is_dark = False
         return bar
+
+    def set_theme_mode(self, is_dark: bool):
+        """Sincroniza los iconos y etiquetas del topbar según el tema activo."""
+        self._is_dark = bool(is_dark)
+        if self._is_dark:
+            self.theme_btn.setText(" Modo Claro")
+            self.theme_btn.setIcon(svg_icon("sun", color="#fbbf24", size=15))
+            if hasattr(self, "btn_toggle_sidebar"):
+                self.btn_toggle_sidebar.setIcon(
+                    svg_icon("menu" if self._sidebar_collapsed else "chevron-left", color="#e2e8f0", size=18)
+                )
+            if hasattr(self, "logout_btn"):
+                self.logout_btn.setIcon(svg_icon("log-out", color="#fca5a5", size=15))
+        else:
+            self.theme_btn.setText(" Modo Oscuro")
+            self.theme_btn.setIcon(svg_icon("moon", color="#475569", size=15))
+            if hasattr(self, "btn_toggle_sidebar"):
+                self.btn_toggle_sidebar.setIcon(
+                    svg_icon("menu" if self._sidebar_collapsed else "chevron-left", color="#475569", size=18)
+                )
+            if hasattr(self, "logout_btn"):
+                self.logout_btn.setIcon(svg_icon("log-out", color="#dc2626", size=15))
 
     def _on_update_clicked(self):
         self.update_requested.emit()
@@ -447,11 +673,6 @@ class DashboardView(QWidget):
         """)
         
     def _on_theme_toggled(self):
-        self._is_dark = not self._is_dark
-        if self._is_dark:
-            self.theme_btn.setText("☀️ Modo Claro")
-        else:
-            self.theme_btn.setText("🌙 Modo Oscuro")
         self.theme_toggled.emit()
 
     def _build_module_cards(self) -> QWidget:

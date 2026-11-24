@@ -14,7 +14,16 @@ def load_stylesheet(app):
         print("Advertencia: No se encontró theme.qss. Usando estilos por defecto.")
 
 def main():
+    from PyQt6.QtGui import QIcon
+    from core.app_paths import resource_path
+
     app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+    for icon_rel in ("data/app_icon.ico", "data/app_icon.png"):
+        icon_p = resource_path(icon_rel)
+        if os.path.exists(icon_p):
+            app.setWindowIcon(QIcon(icon_p))
+            break
     
     # ── Validación de Licencia y Protección de Hardware (Machine Lock) ──
     from core.license_manager import LicenseManager

@@ -3,12 +3,14 @@ import datetime
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit,
-    QFrame, QMessageBox, QComboBox, QDateEdit, QTimeEdit,
+    QFrame, QMessageBox, QComboBox, QTimeEdit,
     QTextEdit, QTabWidget, QGridLayout, QSizePolicy,
-    QGraphicsDropShadowEffect, QScrollArea
+    QGraphicsDropShadowEffect, QScrollArea, QListView
 )
 from PyQt6.QtCore import Qt, QDate, QTime, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPalette
+from ui.widgets.smart_date_edit import SmartDateEdit
+from ui.widgets.app_icons import svg_icon
 
 STYLE = """
 QWidget { font-family: 'Segoe UI', 'Inter', sans-serif; font-size: 13px; }
@@ -100,7 +102,7 @@ class CalendarWidget(QWidget):
 
         self.lbl_month = QLabel()
         self.lbl_month.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_month.setStyleSheet("font-size: 14px; font-weight: bold; color: #1a2744;")
+        self.lbl_month.setStyleSheet("font-size: 14px; font-weight: bold;")
 
         btn_next = QPushButton("▶")
         btn_next.setMaximumWidth(32)
@@ -185,13 +187,15 @@ class CalendarWidget(QWidget):
 
 
 class AppointmentsView(QWidget):
+    cita_actualizada = pyqtSignal(dict)
+
     def __init__(self, db_manager, parent=None):
         super().__init__(parent)
         self.db = db_manager
         self._cita_id = None
         self._pacientes_cache = []
         self._citas_cache = []
-        self.setStyleSheet(STYLE)
+        self._syncing_combo = False
         self.setup_ui()
         if hasattr(self.db, "get_current_user_id") and self.db.get_current_user_id():
             self.load_data()
@@ -236,7 +240,7 @@ class AppointmentsView(QWidget):
         lay.addWidget(sep)
 
         self.lbl_day_title = QLabel("Selecciona un día para ver las citas")
-        self.lbl_day_title.setStyleSheet("font-weight: bold; color: #1a2744; font-size: 13px;")
+        self.lbl_day_title.setStyleSheet("font-weight: bold; font-size: 13px;")
         lay.addWidget(self.lbl_day_title)
 
         self.list_day_citas = QTableWidget(0, 3)
@@ -317,48 +321,53 @@ class AppointmentsView(QWidget):
         lay.setSpacing(12)
 
         self.form_title = QLabel("📅  Nueva Cita")
-        self.form_title.setStyleSheet("font-size: 16px; font-weight: bold; color: #1a2744;")
+        self.form_title.setStyleSheet("font-size: 16px; font-weight: bold;")
         lay.addWidget(self.form_title)
         lay.addWidget(self._sep())
 
         grid = QGridLayout()
         grid.setSpacing(8)
 
-        grid.addWidget(self._lbl("👤 Paciente:"), 0, 0)
+        grid.addWidget(self._lbl("🔍 Filtrar:"), 0, 0)
+        self.input_buscar_pac = QLineEdit()
+        self.input_buscar_pac.setPlaceholderText("Buscar paciente por cédula o nombre...")
+        self.input_buscar_pac.textChanged.connect(self._filtrar_combo_pacientes)
+        grid.addWidget(self.input_buscar_pac, 0, 1)
+
+        grid.addWidget(self._lbl("👤 Paciente:"), 1, 0)
         self.combo_paciente = QComboBox()
-        self.combo_paciente.setEditable(True)
-        self.combo_paciente.lineEdit().setPlaceholderText("Buscar paciente...")
-        grid.addWidget(self.combo_paciente, 0, 1)
+        self.combo_paciente.setView(QListView())
+        self.combo_paciente.setEditable(False)
+        self.combo_paciente.setToolTip("Haz clic para desplegar los pacientes registrados en Identificación")
+        grid.addWidget(self.combo_paciente, 1, 1)
 
-        grid.addWidget(self._lbl("📅 Fecha:"), 1, 0)
-        self.input_fecha = QDateEdit(QDate.currentDate())
-        self.input_fecha.setCalendarPopup(True)
-        self.input_fecha.setDisplayFormat("dd/MM/yyyy")
-        grid.addWidget(self.input_fecha, 1, 1)
+        grid.addWidget(self._lbl("📅 Fecha:"), 2, 0)
+        self.input_fecha = SmartDateEdit(QDate.currentDate())
+        grid.addWidget(self.input_fecha, 2, 1)
 
-        grid.addWidget(self._lbl("🕐 Hora:"), 2, 0)
+        grid.addWidget(self._lbl("🕐 Hora:"), 3, 0)
         self.input_hora = QTimeEdit(QTime(8, 0))
         self.input_hora.setDisplayFormat("HH:mm")
-        grid.addWidget(self.input_hora, 2, 1)
+        grid.addWidget(self.input_hora, 3, 1)
 
-        grid.addWidget(self._lbl("🏷 Tipo:"), 3, 0)
+        grid.addWidget(self._lbl("🏷 Tipo:"), 4, 0)
         self.combo_tipo = QComboBox()
         self.combo_tipo.addItems([
             "Consulta general", "Control", "Primera vez",
-            "Procedimiento", "Urgencia", "Teleconsulta"
+            "Sucesiva", "Procedimiento", "Urgencia", "Teleconsulta"
         ])
-        grid.addWidget(self.combo_tipo, 3, 1)
+        grid.addWidget(self.combo_tipo, 4, 1)
 
-        grid.addWidget(self._lbl("🚦 Estado:"), 4, 0)
+        grid.addWidget(self._lbl("🚦 Estado:"), 5, 0)
         self.combo_estado = QComboBox()
         self.combo_estado.addItems(list(STATUS_COLORS.keys()))
-        grid.addWidget(self.combo_estado, 4, 1)
+        grid.addWidget(self.combo_estado, 5, 1)
 
-        grid.addWidget(self._lbl("📝 Notas:"), 5, 0, Qt.AlignmentFlag.AlignTop)
+        grid.addWidget(self._lbl("📝 Notas:"), 6, 0, Qt.AlignmentFlag.AlignTop)
         self.input_notas = QTextEdit()
-        self.input_notas.setPlaceholderText("Observaciones o instrucciones para la cita...")
-        self.input_notas.setMaximumHeight(80)
-        grid.addWidget(self.input_notas, 5, 1)
+        self.input_notas.setPlaceholderText("Notas adicionales o recordatorios (se sincronizan con Historia Clínica)...")
+        self.input_notas.setMaximumHeight(85)
+        grid.addWidget(self.input_notas, 6, 1)
 
         lay.addLayout(grid)
         lay.addWidget(self._sep())
@@ -366,11 +375,13 @@ class AppointmentsView(QWidget):
 
         btn_row = QHBoxLayout()
         btn_row.addStretch()
-        self.btn_guardar = QPushButton("💾  Guardar Cita")
+        self.btn_guardar = QPushButton(" Guardar Cita")
         self.btn_guardar.setObjectName("btnPrimary")
+        self.btn_guardar.setIcon(svg_icon("save", color="#ffffff", size=15))
         self.btn_guardar.clicked.connect(self.save_data)
-        btn_cancel = QPushButton("✖  Limpiar")
+        btn_cancel = QPushButton(" Limpiar")
         btn_cancel.setObjectName("btnSecondary")
+        btn_cancel.setIcon(svg_icon("x", color="#64748b", size=15))
         btn_cancel.clicked.connect(self.clear_form)
         btn_row.addWidget(self.btn_guardar)
         btn_row.addWidget(btn_cancel)
@@ -388,12 +399,9 @@ class AppointmentsView(QWidget):
         except Exception:
             self._pacientes_cache = []
 
-        self.combo_paciente.clear()
-        for p in self._pacientes_cache:
-            self.combo_paciente.addItem(
-                f"{p.get('nombre', '')}  [{p.get('cedula', '')}]",
-                userData=p.get("id")
-            )
+        self._poblar_combo_pacientes(
+            self.input_buscar_pac.text() if hasattr(self, "input_buscar_pac") else ""
+        )
 
         try:
             self._citas_cache = (
@@ -415,6 +423,41 @@ class AppointmentsView(QWidget):
         self.calendar.set_citas_dates(dates_with_citas)
 
         self._poblar_tabla(self._citas_cache)
+
+    def _poblar_combo_pacientes(self, filtro: str = ""):
+        prev_pid = self.combo_paciente.currentData() if self.combo_paciente.count() else None
+        q = (filtro or "").strip().lower()
+        self._syncing_combo = True
+        self.combo_paciente.clear()
+        self.combo_paciente.addItem("-- Seleccionar paciente registrado --", "")
+        for p in sorted(self._pacientes_cache, key=lambda x: x.get("nombre", "").lower()):
+            nom = p.get("nombre", "")
+            ced = p.get("cedula", "")
+            if q and (q not in nom.lower() and q not in ced.lower()):
+                continue
+            pnf = p.get("pnf", "")
+            extra = f" ({pnf})" if pnf and pnf != "No aplica / Externo" else ""
+            self.combo_paciente.addItem(f"{ced} — {nom}{extra}", userData=p.get("id"))
+        if prev_pid:
+            idx = self.combo_paciente.findData(prev_pid)
+            if idx >= 0:
+                self.combo_paciente.setCurrentIndex(idx)
+        self._syncing_combo = False
+
+    def _filtrar_combo_pacientes(self, text: str):
+        self._poblar_combo_pacientes(text)
+
+    def seleccionar_paciente_por_id(self, paciente_id: str):
+        """Preselecciona un paciente por ID al navegar desde Identificación o Historia Clínica."""
+        if not paciente_id:
+            return
+        self.clear_form()
+        if hasattr(self, "input_buscar_pac"):
+            self.input_buscar_pac.clear()
+        self._poblar_combo_pacientes()
+        idx = self.combo_paciente.findData(paciente_id)
+        if idx >= 0:
+            self.combo_paciente.setCurrentIndex(idx)
 
     def _poblar_tabla(self, citas: list):
         self.table.setRowCount(0)
@@ -472,11 +515,13 @@ class AppointmentsView(QWidget):
 
     def _rellenar_form(self, c: dict):
         self._cita_id = c.get("id")
+        if hasattr(self, "input_buscar_pac"):
+            self.input_buscar_pac.clear()
         idx = self.combo_paciente.findData(c.get("paciente_id"))
         if idx >= 0:
             self.combo_paciente.setCurrentIndex(idx)
         else:
-            self.combo_paciente.setCurrentText(c.get("paciente_nombre", ""))
+            self.combo_paciente.setCurrentIndex(0)
 
         d = QDate.fromString(c.get("fecha", ""), "dd/MM/yyyy")
         if d.isValid():
@@ -492,30 +537,87 @@ class AppointmentsView(QWidget):
         self.btn_guardar.setText("✏️  Actualizar")
 
     def save_data(self):
-        paciente_text = self.combo_paciente.currentText().strip()
-        if not paciente_text:
-            QMessageBox.warning(self, "Campo requerido", "Selecciona un paciente.")
+        paciente_id = self.combo_paciente.currentData()
+        if not paciente_id:
+            QMessageBox.warning(
+                self,
+                "Paciente requerido",
+                "Selecciona un paciente registrado de la lista desplegable."
+            )
+            self.combo_paciente.setFocus()
             return
 
-        paciente_id = self.combo_paciente.currentData()
-        paciente_nombre = paciente_text.split("[")[0].strip()
+        pac = next((p for p in self._pacientes_cache if p.get("id") == paciente_id), None)
+        paciente_nombre = pac.get("nombre", "") if pac else self.combo_paciente.currentText()
+        paciente_cedula = pac.get("cedula", "") if pac else ""
+
+        fecha_str = self.input_fecha.date().toString("dd/MM/yyyy")
+        hora_str = self.input_hora.time().toString("HH:mm")
+        estado_str = self.combo_estado.currentText()
+        notas_str = self.input_notas.toPlainText().strip()
+
+        # Validación contra duplicaciones y solapes de horario
+        if estado_str != "Cancelada":
+            dup_mismo_pac = next(
+                (
+                    c for c in self._citas_cache
+                    if c.get("id") != self._cita_id
+                    and c.get("estado") != "Cancelada"
+                    and c.get("paciente_id") == paciente_id
+                    and c.get("fecha") == fecha_str
+                    and c.get("hora") == hora_str
+                ),
+                None,
+            )
+            if dup_mismo_pac:
+                QMessageBox.warning(
+                    self,
+                    "Cita duplicada",
+                    f"{paciente_nombre} ya tiene una cita registrada el {fecha_str} a las {hora_str}."
+                )
+                return
+
+            solape = next(
+                (
+                    c for c in self._citas_cache
+                    if c.get("id") != self._cita_id
+                    and c.get("estado") != "Cancelada"
+                    and c.get("fecha") == fecha_str
+                    and c.get("hora") == hora_str
+                ),
+                None,
+            )
+            if solape:
+                resp = QMessageBox.question(
+                    self,
+                    "Horario ocupado",
+                    f"Ya existe otra cita el {fecha_str} a las {hora_str} con {solape.get('paciente_nombre', '')}.\n\n"
+                    "¿Deseas agendarla de todas formas?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                )
+                if resp != QMessageBox.StandardButton.Yes:
+                    return
 
         datos = {
-            "paciente_id":     paciente_id or "",
+            "paciente_id":     paciente_id,
             "paciente_nombre": paciente_nombre,
-            "fecha":           self.input_fecha.date().toString("dd/MM/yyyy"),
-            "hora":            self.input_hora.time().toString("HH:mm"),
+            "paciente_cedula": paciente_cedula,
+            "fecha":           fecha_str,
+            "hora":            hora_str,
             "tipo":            self.combo_tipo.currentText(),
-            "estado":          self.combo_estado.currentText(),
-            "notas":           self.input_notas.toPlainText().strip(),
+            "estado":          estado_str,
+            "notas":           notas_str,
         }
 
         try:
             if self._cita_id:
-                self.db._db.collection("citas").document(self._cita_id).update(datos)
+                if hasattr(self.db, "actualizar_cita"):
+                    self.db.actualizar_cita(self._cita_id, datos)
+                else:
+                    self.db._db.collection("citas").document(self._cita_id).update(datos)
+                cita_id_guardada = self._cita_id
                 QMessageBox.information(self, "✅", "Cita actualizada.")
             else:
-                # Inyectar user_id del médico en sesión
                 uid = self.db.get_current_user_id()
                 if not uid:
                     try:
@@ -525,12 +627,15 @@ class AppointmentsView(QWidget):
                         pass
                 datos["user_id"] = uid or ""
                 if hasattr(self.db, "crear_cita"):
-                    self.db.crear_cita(datos)
+                    cita_id_guardada = self.db.crear_cita(datos)
                 else:
-                    self.db._db.collection("citas").add(datos)
+                    ref = self.db._db.collection("citas").add(datos)
+                    cita_id_guardada = ref[1].id
                 QMessageBox.information(self, "✅", "Cita registrada.")
+
             self.clear_form()
             self.load_data()
+            self.cita_actualizada.emit(datos | {"id": cita_id_guardada or ""})
         except Exception as e:
             QMessageBox.critical(self, "Error", f"No se pudo guardar:\n{e}")
 
@@ -546,9 +651,13 @@ class AppointmentsView(QWidget):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
             try:
-                self.db._db.collection("citas").document(cita_id).delete()
+                if hasattr(self.db, "eliminar_cita"):
+                    self.db.eliminar_cita(cita_id)
+                else:
+                    self.db._db.collection("citas").document(cita_id).delete()
                 self.clear_form()
                 self.load_data()
+                self.cita_actualizada.emit({"id": cita_id, "deleted": True})
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"No se pudo eliminar:\n{e}")
 
@@ -563,8 +672,9 @@ class AppointmentsView(QWidget):
 
     def clear_form(self):
         self._cita_id = None
-        self.combo_paciente.setCurrentIndex(-1)
-        self.combo_paciente.clearEditText()
+        if hasattr(self, "input_buscar_pac"):
+            self.input_buscar_pac.clear()
+        self.combo_paciente.setCurrentIndex(0)
         self.input_fecha.setDate(QDate.currentDate())
         self.input_hora.setTime(QTime(8, 0))
         self.combo_tipo.setCurrentIndex(0)
@@ -578,7 +688,7 @@ class AppointmentsView(QWidget):
 
     def _lbl(self, text: str) -> QLabel:
         l = QLabel(text)
-        l.setStyleSheet("font-size: 12px; color: #374151; font-weight: 500;")
+        l.setStyleSheet("font-size: 12px; font-weight: 600;")
         l.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         return l
     @staticmethod

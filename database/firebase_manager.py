@@ -119,6 +119,34 @@ class FirebaseManager:
             print(f"[ERROR] crear_paciente: {e}")
             return None
 
+    def actualizar_paciente(self, paciente_id: str, datos: dict) -> bool:
+        """Actualiza los datos de un paciente existente en /pacientes."""
+        if not self.is_configured() or not paciente_id:
+            return False
+        try:
+            payload = dict(datos)
+            payload["updated_at"] = firestore.SERVER_TIMESTAMP
+            self._db.collection("pacientes").document(paciente_id).update(payload)
+            return True
+        except Exception as e:
+            print(f"[ERROR] actualizar_paciente: {e}")
+            return False
+
+    def eliminar_paciente(self, paciente_id: str, borrado_logico: bool = True) -> bool:
+        """Elimina o desactiva un paciente en /pacientes."""
+        if not self.is_configured() or not paciente_id:
+            return False
+        try:
+            ref = self._db.collection("pacientes").document(paciente_id)
+            if borrado_logico:
+                ref.update({"activo": False, "updated_at": firestore.SERVER_TIMESTAMP})
+            else:
+                ref.delete()
+            return True
+        except Exception as e:
+            print(f"[ERROR] eliminar_paciente: {e}")
+            return False
+
     def obtener_pacientes(self, solo_activos=True, user_id=None):
         """Listar todos los pacientes pertenecientes al usuario actual."""
         if not self.is_configured():
@@ -267,17 +295,15 @@ class FirebaseManager:
                 return False
 
     def eliminar_sesion(self, sesion_id):
-        if not self.is_configured(): return False
+        if not self.is_configured() or not sesion_id:
+            return False
         try:
             self._db.collection("sesiones").document(sesion_id).delete()
+            self._db.collection("sesiones_clinicas").document(sesion_id).delete()
             return True
-        except Exception:
-            try:
-                self._db.collection("sesiones_clinicas").document(sesion_id).delete()
-                return True
-            except Exception as e:
-                print(f"[ERROR] eliminar_sesion: {e}")
-                return False
+        except Exception as e:
+            print(f"[ERROR] eliminar_sesion: {e}")
+            return False
 
     # ── Facturación ────────────────────────────────────────────
     def crear_factura(self, datos: dict):
@@ -477,3 +503,38 @@ class FirebaseManager:
         except Exception as e:
             print(f"[ERROR] eliminar_historia_clinica: {e}")
             return False
+
+    # ── Catálogo de Condiciones / Patologías (IPX) ────────────
+    def obtener_condiciones_clinicas(self, user_id=None) -> list[str]:
+        """Obtiene las condiciones/patologías personalizadas guardadas en Firestore."""
+        if not self.is_configured():
+            return []
+        uid = user_id or self.get_current_user_id()
+        try:
+            docs = self._db.collection("diagnosticos_catalogo").stream()
+            items = []
+            for doc in docs:
+                d = doc.to_dict()
+                doc_uid = d.get("user_id")
+                nombre = (d.get("nombre", "") or "").strip()
+                if nombre and (not doc_uid or doc_uid == uid or d.get("is_global")):
+                    items.append(nombre)
+            return sorted(set(items), key=str.lower)
+        except Exception as e:
+            print(f"[ERROR] obtener_condiciones_clinicas: {e}")
+            return []
+
+    def crear_condicion_clinica(self, nombre: str) -> str | None:
+        """Guarda una nueva condición/patología personalizada en /diagnosticos_catalogo."""
+        if not self.is_configured() or not nombre.strip():
+            return None
+        try:
+            ref = self._db.collection("diagnosticos_catalogo").add({
+                "nombre": nombre.strip(),
+                "user_id": self.get_current_user_id(),
+                "created_at": firestore.SERVER_TIMESTAMP,
+            })
+            return ref[1].id
+        except Exception as e:
+            print(f"[ERROR] crear_condicion_clinica: {e}")
+            return None

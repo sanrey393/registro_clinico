@@ -1,40 +1,32 @@
-# ui/views/clinical_sessions_view.py — Reescritura completa
-# Módulo de Sesiones Clínicas con formulario médico completo
+# ui/views/clinical_sessions_view.py
+# Bitácora y Reporte Global de Consultas (Opción A: lectura unificada de sesiones + pacientes)
 
-import datetime
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit,
-    QFrame, QMessageBox, QTextEdit, QComboBox, QDateTimeEdit,
-    QFormLayout, QGridLayout, QTabWidget, QSizePolicy,
-    QGraphicsDropShadowEffect, QCompleter, QScrollArea, QDoubleSpinBox
+    QFrame, QMessageBox, QComboBox, QGridLayout, QCheckBox
 )
-from PyQt6.QtCore import Qt, QDateTime, QStringListModel, QSortFilterProxyModel
-from PyQt6.QtGui import QColor, QFont
+from PyQt6.QtCore import Qt, QDate, QTime, pyqtSignal
+from PyQt6.QtGui import QColor
+from ui.widgets.smart_date_edit import SmartDateEdit
+from ui.widgets.app_icons import svg_icon
+from core.academic_catalog import PNF_OPTIONS, ALL_TRAYECTOS, normalize_seccion
 
 STYLE = """
 QWidget { font-family: 'Segoe UI', 'Inter', sans-serif; font-size: 13px; }
 QLabel { background: transparent; border: none; }
-QLineEdit, QTextEdit, QComboBox, QDateTimeEdit, QDoubleSpinBox {
-    border: 1.5px solid #e2e8f0;
+QLineEdit, QComboBox {
+    border: 1.5px solid #cbd5e1;
     border-radius: 7px;
     padding: 5px 9px;
     background: #ffffff;
-    color: #374151;
+    color: #0f172a;
 }
-QLineEdit:focus, QTextEdit:focus, QComboBox:focus, QDateTimeEdit:focus {
-    border-color: #4d9ef7;
-}
-QComboBox::drop-down { border: none; width: 22px; }
-QComboBox QAbstractItemView {
-    border: 1px solid #e2e8f0;
-    selection-background-color: #e0f2fe;
-    border-radius: 6px;
-}
+QLineEdit:focus, QComboBox:focus { border-color: #2563eb; }
 QTableWidget {
     background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 10px;
     gridline-color: transparent;
     alternate-background-color: #f8fafc;
 }
@@ -48,555 +40,435 @@ QHeaderView::section {
 }
 QTableWidget::item { padding: 6px; }
 QTableWidget::item:selected { background: #dbeafe; color: #1e40af; }
-QFrame#card {
+QFrame#kpiCard {
     background: #ffffff;
-    border-radius: 12px;
     border: 1px solid #e2e8f0;
+    border-radius: 10px;
 }
 QPushButton#btnPrimary {
-    background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
-        stop:0 #4d9ef7, stop:1 #3275e5);
-    color: white; border: none; border-radius: 8px;
-    font-weight: bold; padding: 9px 20px;
+    background: #2563eb; color: white; border: none;
+    border-radius: 7px; font-weight: bold; padding: 8px 16px;
 }
-QPushButton#btnPrimary:hover { background: #3275e5; }
-QPushButton#btnSuccess {
-    background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
-        stop:0 #10b981, stop:1 #059669);
-    color: white; border: none; border-radius: 8px;
-    font-weight: bold; padding: 9px 20px;
-}
-QPushButton#btnSuccess:hover { background: #059669; }
-QPushButton#btnPdf {
-    background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
-        stop:0 #f59e0b, stop:1 #d97706);
-    color: white; border: none; border-radius: 8px;
-    font-weight: bold; padding: 9px 18px;
-}
-QPushButton#btnPdf:hover { background: #d97706; }
-QPushButton#btnDanger {
-    background: #fee2e2; color: #dc2626;
-    border: 1px solid #fecaca; border-radius: 8px;
-    font-weight: bold; padding: 8px 16px;
-}
-QPushButton#btnDanger:hover { background: #fecaca; }
+QPushButton#btnPrimary:hover { background: #1d4ed8; }
 QPushButton#btnSecondary {
-    background: #f1f5f9; color: #475569;
-    border: 1px solid #e2e8f0; border-radius: 8px;
-    padding: 8px 16px;
+    background: #f8fafc; color: #334155; border: 1px solid #cbd5e1;
+    border-radius: 7px; font-weight: 600; padding: 7px 14px;
 }
 QPushButton#btnSecondary:hover { background: #e2e8f0; }
-QTabWidget::pane { border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; }
-QTabBar::tab {
-    background: #f1f5f9; color: #64748b;
-    padding: 8px 18px; margin-right: 2px;
-    border-top-left-radius: 7px; border-top-right-radius: 7px;
-    font-weight: 500;
+QPushButton#btnDanger {
+    background: #fee2e2; color: #dc2626; border: 1px solid #fecaca;
+    border-radius: 7px; font-weight: bold; padding: 7px 14px;
 }
-QTabBar::tab:selected { background: #fff; color: #1a73e8; font-weight: bold; border-bottom: 2px solid #1a73e8; }
+QPushButton#btnDanger:hover { background: #fecaca; }
 """
 
+
 class ClinicalSessionsView(QWidget):
+    """
+    Bitácora Global de Consultas:
+    Centraliza todas las visitas registradas en Historia Clínica y citas completadas en Agenda,
+    con métricas rápidas, filtros académicos/fecha y acceso directo al expediente del paciente.
+    """
+
+    abrir_historia_requested = pyqtSignal(str)
+    sesion_actualizada = pyqtSignal()
+
     def __init__(self, db_manager, parent=None):
         super().__init__(parent)
         self.db = db_manager
-        self._sesion_id = None
+        self._sesiones_cache = []
         self._pacientes_cache = []
-        self.setStyleSheet(STYLE)
         self.setup_ui()
         if hasattr(self.db, "get_current_user_id") and self.db.get_current_user_id():
             self.load_data()
 
     def focus_new_form(self):
-        self.clear_form()
-        self.combo_paciente.setFocus()
-
-    # ══════════════════════════════════════════════════════════
-    # UI
-    # ══════════════════════════════════════════════════════════
+        self.search_input.setFocus()
 
     def setup_ui(self):
-        root = QHBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(14)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(16, 14, 16, 14)
+        root.setSpacing(12)
 
-        # ── Columna izquierda: Lista + filtros ──
-        root.addLayout(self._build_left_panel(), 2)
+        # Encabezado
+        header = QHBoxLayout()
+        title_box = QVBoxLayout()
+        title_box.setSpacing(2)
+        title = QLabel("📊  Bitácora de Consultas y Seguimiento")
+        title.setStyleSheet("font-size: 18px; font-weight: bold;")
+        sub = QLabel(
+            "Resumen automático de todas las visitas registradas en Historia Clínica y citas completadas en Agenda."
+        )
+        sub.setStyleSheet("font-size: 12px; color: #64748b;")
+        title_box.addWidget(title)
+        title_box.addWidget(sub)
+        header.addLayout(title_box, 1)
 
-        # ── Columna derecha: Formulario ──
-        root.addWidget(self._build_right_panel(), 3)
+        btn_refresh = QPushButton("🔄 Actualizar")
+        btn_refresh.setObjectName("btnSecondary")
+        btn_refresh.clicked.connect(self.load_data)
+        header.addWidget(btn_refresh)
+        root.addLayout(header)
 
-    # ── Panel izquierdo ──────────────────────────────────────
+        # Tarjetas KPI rápidas
+        kpi_row = QHBoxLayout()
+        kpi_row.setSpacing(10)
+        self.lbl_kpi_total = self._make_kpi_card(kpi_row, "Total Consultas", "0", "#1e3a8a")
+        self.lbl_kpi_primera = self._make_kpi_card(kpi_row, "🆕 Primera Vez", "0", "#047857")
+        self.lbl_kpi_sucesiva = self._make_kpi_card(kpi_row, "🔄 Sucesivas", "0", "#2563eb")
+        self.lbl_kpi_pacientes = self._make_kpi_card(kpi_row, "👥 Pacientes Atendidos", "0", "#7c3aed")
+        root.addLayout(kpi_row)
 
-    def _build_left_panel(self) -> QVBoxLayout:
-        lay = QVBoxLayout()
-        lay.setSpacing(10)
+        # Barra de búsqueda y filtros
+        filt_frame = QFrame()
+        filt_frame.setObjectName("filterBox")
+        filt_v = QVBoxLayout(filt_frame)
+        filt_v.setContentsMargins(12, 10, 12, 10)
+        filt_v.setSpacing(8)
 
-        # Título
-        t = QLabel("🏥  Sesiones Clínicas")
-        t.setStyleSheet("font-size: 18px; font-weight: bold; color: #1a2744;")
-        lay.addWidget(t)
-
-        # Búsqueda rápida
+        row1 = QHBoxLayout()
+        row1.setSpacing(8)
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("🔍  Buscar por paciente o diagnóstico...")
-        self.search_input.textChanged.connect(self._filtrar_tabla)
-        lay.addWidget(self.search_input)
+        self.search_input.setPlaceholderText("🔍 Buscar por cédula, nombre, evolución o recordatorio...")
+        self.search_input.textChanged.connect(self._aplicar_filtros)
+        row1.addWidget(self.search_input, 2)
 
-        # Tabla
-        self.table = QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(["Paciente", "Fecha", "Tipo", "Diagnóstico", ""])
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        self.combo_filtro_tipo = QComboBox()
+        self.combo_filtro_tipo.addItems(["Tipo: Todos", "Primera vez", "Sucesiva", "Control", "Seguimiento"])
+        self.combo_filtro_tipo.currentTextChanged.connect(self._aplicar_filtros)
+        row1.addWidget(self.combo_filtro_tipo, 1)
+
+        self.chk_fecha = QCheckBox("Rango de fechas:")
+        self.chk_fecha.toggled.connect(self._aplicar_filtros)
+        row1.addWidget(self.chk_fecha)
+
+        self.date_desde = SmartDateEdit(QDate.currentDate().addMonths(-1))
+        self.date_desde.setMinimumWidth(155)
+        self.date_desde.dateChanged.connect(self._aplicar_filtros)
+        row1.addWidget(self.date_desde)
+
+        self.date_hasta = SmartDateEdit(QDate.currentDate())
+        self.date_hasta.setMinimumWidth(155)
+        self.date_hasta.dateChanged.connect(self._aplicar_filtros)
+        row1.addWidget(self.date_hasta)
+
+        btn_limpiar = QPushButton("🧹 Limpiar")
+        btn_limpiar.setObjectName("btnSecondary")
+        btn_limpiar.clicked.connect(self._limpiar_filtros)
+        row1.addWidget(btn_limpiar)
+        filt_v.addLayout(row1)
+
+        row2 = QHBoxLayout()
+        row2.setSpacing(8)
+        self.combo_filtro_pnf = QComboBox()
+        self.combo_filtro_pnf.addItems(["Todos los PNF", "Sin asignar"] + PNF_OPTIONS)
+        self.combo_filtro_pnf.currentTextChanged.connect(self._aplicar_filtros)
+
+        self.combo_filtro_tray = QComboBox()
+        self.combo_filtro_tray.addItems(["Todos los Trayectos", "Sin asignar"] + ALL_TRAYECTOS)
+        self.combo_filtro_tray.currentTextChanged.connect(self._aplicar_filtros)
+
+        self.combo_filtro_sec = QComboBox()
+        self.combo_filtro_sec.addItems(["Todas las Secciones", "Sin asignar"])
+        self.combo_filtro_sec.currentTextChanged.connect(self._aplicar_filtros)
+
+        self.combo_filtro_anio = QComboBox()
+        self.combo_filtro_anio.addItems(["Todos los Años", "Sin asignar"])
+        self.combo_filtro_anio.currentTextChanged.connect(self._aplicar_filtros)
+
+        row2.addWidget(self.combo_filtro_pnf, 2)
+        row2.addWidget(self.combo_filtro_tray, 1)
+        row2.addWidget(self.combo_filtro_sec, 1)
+        row2.addWidget(self.combo_filtro_anio, 1)
+        filt_v.addLayout(row2)
+        root.addWidget(filt_frame)
+
+        # Tabla principal de bitácora
+        self.table = QTableWidget(0, 12)
+        self.table.setHorizontalHeaderLabels([
+            "Fecha", "Hora", "Cédula", "Paciente", "PNF", "Trayecto",
+            "Sección", "Año", "Tipo", "Evolución / Detalles", "Recordatorio", "ID"
+        ])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        self.table.horizontalHeader().setSectionResizeMode(9, QHeaderView.ResizeMode.Stretch)
+        self.table.setColumnHidden(11, True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
         self.table.verticalHeader().setVisible(False)
-        self.table.itemDoubleClicked.connect(self._cargar_sesion)
-        lay.addWidget(self.table)
+        self.table.itemDoubleClicked.connect(self._abrir_historia_fila)
+        root.addWidget(self.table, 1)
 
-        # Contador
-        self.lbl_count = QLabel("0 sesiones registradas")
-        self.lbl_count.setStyleSheet("color: #6c757d; font-size: 12px;")
-        lay.addWidget(self.lbl_count)
+        # Barra inferior
+        bottom = QHBoxLayout()
+        self.lbl_count = QLabel("0 consultas registradas")
+        self.lbl_count.setStyleSheet("color: #64748b; font-size: 12px; font-weight: 500;")
+        bottom.addWidget(self.lbl_count)
+        bottom.addStretch()
 
-        # Botones inferiores
-        btn_row = QHBoxLayout()
-        btn_nueva = QPushButton("➕  Nueva Sesión")
-        btn_nueva.setObjectName("btnSuccess")
-        btn_nueva.clicked.connect(self.clear_form)
-        btn_eliminar = QPushButton("🗑  Eliminar")
-        btn_eliminar.setObjectName("btnDanger")
-        btn_eliminar.clicked.connect(self._eliminar)
-        btn_row.addWidget(btn_nueva)
-        btn_row.addWidget(btn_eliminar)
-        lay.addLayout(btn_row)
+        btn_abrir = QPushButton(" Abrir Historia Clínica")
+        btn_abrir.setObjectName("btnPrimary")
+        btn_abrir.setIcon(svg_icon("file-text", color="#ffffff", size=15))
+        btn_abrir.clicked.connect(self._abrir_historia_seleccionada)
+        bottom.addWidget(btn_abrir)
 
-        return lay
+        btn_del = QPushButton(" Eliminar Registro")
+        btn_del.setObjectName("btnDanger")
+        btn_del.setIcon(svg_icon("trash", color="#dc2626", size=15))
+        btn_del.clicked.connect(self._eliminar_registro)
+        bottom.addWidget(btn_del)
+        root.addLayout(bottom)
 
-    # ── Panel derecho: formulario médico ────────────────────
-
-    def _build_right_panel(self) -> QFrame:
+    def _make_kpi_card(self, parent_lay: QHBoxLayout, titulo: str, valor: str, color: str) -> QLabel:
         card = QFrame()
-        card.setObjectName("card")
-        shadow = QGraphicsDropShadowEffect()
-        shadow.setBlurRadius(20)
-        shadow.setColor(QColor(0, 0, 0, 20))
-        shadow.setOffset(0, 4)
-        card.setGraphicsEffect(shadow)
-
-        scroll = QScrollArea()
-        scroll.setWidget(card)
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setStyleSheet("background: transparent;")
-
-        lay = QVBoxLayout(card)
-        lay.setContentsMargins(20, 18, 20, 18)
-        lay.setSpacing(12)
-
-        # Título del formulario
-        self.form_title = QLabel("📋  Nueva Sesión Clínica")
-        self.form_title.setStyleSheet("font-size: 16px; font-weight: bold; color: #1a2744;")
-        lay.addWidget(self.form_title)
-
-        sep = self._sep()
-        lay.addWidget(sep)
-
-        # ── Datos básicos ──
-        grid1 = QGridLayout()
-        grid1.setSpacing(8)
-
-        # Paciente
-        grid1.addWidget(self._lbl("👤 Paciente:"), 0, 0)
-        self.combo_paciente = QComboBox()
-        self.combo_paciente.setEditable(True)
-        self.combo_paciente.setPlaceholderText("Buscar por nombre o cédula...")
-        self.combo_paciente.lineEdit().setPlaceholderText("Buscar por nombre o cédula...")
-        grid1.addWidget(self.combo_paciente, 0, 1, 1, 3)
-
-        # Fecha y hora
-        grid1.addWidget(self._lbl("📅 Fecha/Hora:"), 1, 0)
-        self.input_fecha = QDateTimeEdit(QDateTime.currentDateTime())
-        self.input_fecha.setDisplayFormat("dd/MM/yyyy  HH:mm")
-        self.input_fecha.setCalendarPopup(True)
-        grid1.addWidget(self.input_fecha, 1, 1)
-
-        # Tipo de consulta
-        grid1.addWidget(self._lbl("🏷 Tipo:"), 1, 2)
-        self.combo_tipo = QComboBox()
-        self.combo_tipo.addItems([
-            "Primera vez", "Seguimiento", "Control",
-            "Urgencia", "Procedimiento", "Teleconsulta"
-        ])
-        grid1.addWidget(self.combo_tipo, 1, 3)
-
-        lay.addLayout(grid1)
-        lay.addWidget(self._sep())
-
-        # ── Motivo y anamnesis ──
-        sec1 = self._section("📝  Consulta")
-        lay.addWidget(sec1)
-
-        grid2 = QGridLayout()
-        grid2.setSpacing(8)
-        grid2.addWidget(self._lbl("Motivo:"), 0, 0, Qt.AlignmentFlag.AlignTop)
-        self.input_motivo = QTextEdit()
-        self.input_motivo.setPlaceholderText("Motivo de consulta referido por el paciente...")
-        self.input_motivo.setMaximumHeight(60)
-        grid2.addWidget(self.input_motivo, 0, 1)
-
-        grid2.addWidget(self._lbl("Enfermedad actual:"), 1, 0, Qt.AlignmentFlag.AlignTop)
-        self.input_anamnesis = QTextEdit()
-        self.input_anamnesis.setPlaceholderText("Historia de la enfermedad actual...")
-        self.input_anamnesis.setMaximumHeight(70)
-        grid2.addWidget(self.input_anamnesis, 1, 1)
-        lay.addLayout(grid2)
-
-        lay.addWidget(self._sep())
-
-        # ── Examen físico ──
-        sec2 = self._section("🩺  Examen Físico")
-        lay.addWidget(sec2)
-
-        grid3 = QGridLayout()
-        grid3.setSpacing(8)
-
-        vitals = [
-            ("TA (mmHg):", "input_ta", "120/80"),
-            ("FC (lpm):", "input_fc", "72"),
-            ("FR (rpm):", "input_fr", "16"),
-            ("Temp (°C):", "input_temp", "36.5"),
-            ("Peso (kg):", "input_peso", "70"),
-            ("Talla (m):", "input_talla", "1.70"),
-        ]
-        for i, (lbl, attr, ph) in enumerate(vitals):
-            row, col = divmod(i, 3)
-            grid3.addWidget(self._lbl(lbl), row, col * 2)
-            field = QLineEdit()
-            field.setPlaceholderText(ph)
-            field.setMaximumWidth(90)
-            setattr(self, attr, field)
-            grid3.addWidget(field, row, col * 2 + 1)
-
-        lay.addLayout(grid3)
-
-        grid3b = QGridLayout()
-        grid3b.setSpacing(8)
-        grid3b.addWidget(self._lbl("Examen físico:"), 0, 0, Qt.AlignmentFlag.AlignTop)
-        self.input_examen = QTextEdit()
-        self.input_examen.setPlaceholderText("Hallazgos relevantes del examen físico...")
-        self.input_examen.setMaximumHeight(70)
-        grid3b.addWidget(self.input_examen, 0, 1)
-        lay.addLayout(grid3b)
-
-        lay.addWidget(self._sep())
-
-        # ── Diagnóstico ──
-        sec3 = self._section("🔬  Diagnóstico y Plan")
-        lay.addWidget(sec3)
-
-        grid4 = QGridLayout()
-        grid4.setSpacing(8)
-
-        grid4.addWidget(self._lbl("Diagnóstico:"), 0, 0, Qt.AlignmentFlag.AlignTop)
-        self.input_diagnostico = QTextEdit()
-        self.input_diagnostico.setPlaceholderText("Diagnóstico principal y diagnósticos diferenciales...")
-        self.input_diagnostico.setMaximumHeight(60)
-        grid4.addWidget(self.input_diagnostico, 0, 1)
-
-        grid4.addWidget(self._lbl("Plan / Indicaciones:"), 1, 0, Qt.AlignmentFlag.AlignTop)
-        self.input_plan = QTextEdit()
-        self.input_plan.setPlaceholderText("Plan terapéutico, indicaciones médicas, paraclínicos...")
-        self.input_plan.setMaximumHeight(70)
-        grid4.addWidget(self.input_plan, 1, 1)
-
-        grid4.addWidget(self._lbl("Próxima cita:"), 2, 0)
-        self.input_proxima = QLineEdit()
-        self.input_proxima.setPlaceholderText("Ej: 2 semanas, 1 mes...")
-        grid4.addWidget(self.input_proxima, 2, 1)
-
-        lay.addLayout(grid4)
-
-        # ── Botones ──
-        lay.addWidget(self._sep())
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-
-        self.btn_guardar = QPushButton("💾  Guardar Sesión")
-        self.btn_guardar.setObjectName("btnPrimary")
-        self.btn_guardar.clicked.connect(self.save_data)
-
-        self.btn_imprimir = QPushButton("🖨️  Imprimir Sesión")
-        self.btn_imprimir.setObjectName("btnPdf")
-        self.btn_imprimir.clicked.connect(self._imprimir_sesion)
-
-        btn_limpiar = QPushButton("✖  Limpiar")
-        btn_limpiar.setObjectName("btnSecondary")
-        btn_limpiar.clicked.connect(self.clear_form)
-
-        btn_row.addWidget(self.btn_guardar)
-        btn_row.addWidget(self.btn_imprimir)
-        btn_row.addWidget(btn_limpiar)
-        lay.addLayout(btn_row)
-
-        # Retornamos el scroll que envuelve la tarjeta
-        return scroll
-
-    # ══════════════════════════════════════════════════════════
-    # Lógica
-    # ══════════════════════════════════════════════════════════
+        card.setObjectName("kpiCard")
+        v = QVBoxLayout(card)
+        v.setContentsMargins(14, 10, 14, 10)
+        v.setSpacing(2)
+        lbl_t = QLabel(titulo)
+        lbl_t.setStyleSheet("font-size: 12px; color: #64748b; font-weight: 600;")
+        lbl_v = QLabel(valor)
+        lbl_v.setStyleSheet(f"font-size: 22px; font-weight: bold; color: {color};")
+        v.addWidget(lbl_t)
+        v.addWidget(lbl_v)
+        parent_lay.addWidget(card, 1)
+        return lbl_v
 
     def load_data(self):
-        """Carga sesiones y pacientes desde Firebase."""
         try:
-            self._pacientes_cache = self.db.obtener_pacientes()
+            self._sesiones_cache = self.db.obtener_sesiones() if hasattr(self.db, "obtener_sesiones") else []
+        except Exception:
+            self._sesiones_cache = []
+        try:
+            self._pacientes_cache = self.db.obtener_pacientes() if hasattr(self.db, "obtener_pacientes") else []
         except Exception:
             self._pacientes_cache = []
 
-        # Cargar nombres en combo paciente
-        self.combo_paciente.clear()
-        for p in self._pacientes_cache:
-            cedula = p.get("cedula", "")
-            nombre = p.get("nombre", "")
-            self.combo_paciente.addItem(f"{nombre}  [{cedula}]", userData=p.get("id"))
-
-        # Cargar sesiones
-        try:
-            sesiones = self.db.obtener_sesiones() if hasattr(self.db, "obtener_sesiones") else []
-        except Exception:
-            sesiones = []
-
-        self._sesiones_cache = sesiones
-        self._poblar_tabla(sesiones)
-
-    def _poblar_tabla(self, sesiones: list):
-        self.table.setRowCount(0)
-        for i, s in enumerate(sesiones):
-            self.table.insertRow(i)
-            self.table.setItem(i, 0, QTableWidgetItem(s.get("paciente_nombre", s.get("paciente_id", ""))))
-            self.table.setItem(i, 1, QTableWidgetItem(s.get("fecha", "")))
-            self.table.setItem(i, 2, QTableWidgetItem(s.get("tipo", "")))
-            self.table.setItem(i, 3, QTableWidgetItem(s.get("diagnostico", "")[:60]))
-            # ID oculto
-            id_item = QTableWidgetItem(s.get("id", ""))
-            self.table.setItem(i, 4, id_item)
-
-        self.lbl_count.setText(f"{len(sesiones)} sesión(es) registrada(s)")
-
-    def _filtrar_tabla(self, text: str):
-        q = text.lower()
-        for row in range(self.table.rowCount()):
-            visible = any(
-                q in (self.table.item(row, col).text().lower() if self.table.item(row, col) else "")
-                for col in range(4)
+        # Ordenar cronológicamente (más reciente primero)
+        def _sort_key(s):
+            d = QDate.fromString(s.get("fecha", ""), "dd/MM/yyyy")
+            t = QTime.fromString(s.get("hora", "00:00"), "HH:mm")
+            return (
+                d.toString("yyyyMMdd") if d.isValid() else "00000000",
+                t.toString("HHmm") if t.isValid() else "0000",
             )
-            self.table.setRowHidden(row, not visible)
 
-    def _cargar_sesion(self, item):
-        """Doble clic en fila: carga la sesión en el formulario."""
-        row = item.row()
-        id_item = self.table.item(row, 4)
-        if not id_item:
-            return
-        sesion_id = id_item.text()
-        s = next((x for x in self._sesiones_cache if x.get("id") == sesion_id), None)
-        if not s:
-            return
+        self._sesiones_cache.sort(key=_sort_key, reverse=True)
+        self._actualizar_opciones_filtros()
+        self._aplicar_filtros()
 
-        self._sesion_id = sesion_id
+    def _resolver_paciente(self, s: dict) -> dict | None:
+        pid = s.get("paciente_id", "")
+        ced = (s.get("paciente_cedula", "") or "").strip().lower()
+        if pid:
+            pac = next((p for p in self._pacientes_cache if p.get("id") == pid), None)
+            if pac:
+                return pac
+        if ced:
+            return next(
+                (p for p in self._pacientes_cache if (p.get("cedula", "") or "").strip().lower() == ced),
+                None,
+            )
+        return None
 
-        # Paciente
-        idx = self.combo_paciente.findData(s.get("paciente_id"))
-        if idx >= 0:
-            self.combo_paciente.setCurrentIndex(idx)
-        else:
-            self.combo_paciente.setCurrentText(s.get("paciente_nombre", ""))
+    def _actualizar_opciones_filtros(self):
+        secciones = sorted({
+            normalize_seccion(p.get("seccion", ""))
+            for p in self._pacientes_cache
+            if p.get("seccion")
+        })
+        anios = sorted({
+            str(p.get("anio_academico", "")).strip()
+            for p in self._pacientes_cache
+            if p.get("anio_academico")
+        }, reverse=True)
 
-        # Fecha
-        try:
-            fecha_str = s.get("fecha", "")
-            dt = QDateTime.fromString(fecha_str, "dd/MM/yyyy  HH:mm")
-            if dt.isValid():
-                self.input_fecha.setDateTime(dt)
-        except Exception:
-            pass
+        prev_s = self.combo_filtro_sec.currentText()
+        self.combo_filtro_sec.blockSignals(True)
+        self.combo_filtro_sec.clear()
+        self.combo_filtro_sec.addItems(["Todas las Secciones", "Sin asignar"] + secciones)
+        self.combo_filtro_sec.setCurrentIndex(max(0, self.combo_filtro_sec.findText(prev_s)))
+        self.combo_filtro_sec.blockSignals(False)
 
-        idx_tipo = self.combo_tipo.findText(s.get("tipo", ""))
-        self.combo_tipo.setCurrentIndex(max(0, idx_tipo))
+        prev_a = self.combo_filtro_anio.currentText()
+        self.combo_filtro_anio.blockSignals(True)
+        self.combo_filtro_anio.clear()
+        self.combo_filtro_anio.addItems(["Todos los Años", "Sin asignar"] + anios)
+        self.combo_filtro_anio.setCurrentIndex(max(0, self.combo_filtro_anio.findText(prev_a)))
+        self.combo_filtro_anio.blockSignals(False)
 
-        self.input_motivo.setPlainText(s.get("motivo", ""))
-        self.input_anamnesis.setPlainText(s.get("anamnesis", ""))
-        self.input_ta.setText(s.get("ta", ""))
-        self.input_fc.setText(s.get("fc", ""))
-        self.input_fr.setText(s.get("fr", ""))
-        self.input_temp.setText(s.get("temp", ""))
-        self.input_peso.setText(s.get("peso", ""))
-        self.input_talla.setText(s.get("talla", ""))
-        self.input_examen.setPlainText(s.get("examen_fisico", ""))
-        self.input_diagnostico.setPlainText(s.get("diagnostico", ""))
-        self.input_plan.setPlainText(s.get("plan", ""))
-        self.input_proxima.setText(s.get("proxima_cita", ""))
-        self.form_title.setText("✏️  Editar Sesión Clínica")
-        self.btn_guardar.setText("✏️  Actualizar")
+    def _aplicar_filtros(self, *args):
+        q = self.search_input.text().strip().lower()
+        f_tipo = self.combo_filtro_tipo.currentText()
+        f_pnf = self.combo_filtro_pnf.currentText()
+        f_tray = self.combo_filtro_tray.currentText()
+        f_sec = self.combo_filtro_sec.currentText()
+        f_anio = self.combo_filtro_anio.currentText()
+        usar_fecha = self.chk_fecha.isChecked()
+        d_desde = self.date_desde.date()
+        d_hasta = self.date_hasta.date()
 
-    def save_data(self):
-        paciente_text = self.combo_paciente.currentText().strip()
-        if not paciente_text:
-            QMessageBox.warning(self, "Campo requerido", "Selecciona un paciente.")
-            return
+        filtradas = []
+        for s in self._sesiones_cache:
+            pac = self._resolver_paciente(s)
+            ced = (pac.get("cedula", "") if pac else s.get("paciente_cedula", "")) or ""
+            nom = (pac.get("nombre", "") if pac else s.get("paciente_nombre", "")) or ""
+            evo = s.get("evolucion", s.get("notas", "")) or ""
+            rec = s.get("nota_recordatorio", "") or ""
+            pnf = (pac.get("pnf", "") if pac else "") or ""
+            tray = (pac.get("trayecto", "") if pac else "") or ""
+            sec = normalize_seccion(pac.get("seccion", "")) if pac else ""
+            anio = str(pac.get("anio_academico", "")).strip() if pac else ""
+            tipo = s.get("tipo", "Sucesiva")
 
-        # Intentar obtener ID del paciente desde el combo
-        paciente_id = self.combo_paciente.currentData()
-        paciente_nombre = paciente_text.split("[")[0].strip()
+            if q and (
+                q not in ced.lower()
+                and q not in nom.lower()
+                and q not in evo.lower()
+                and q not in rec.lower()
+            ):
+                continue
 
-        datos = {
-            "paciente_id":     paciente_id or "",
-            "paciente_nombre": paciente_nombre,
-            "fecha":           self.input_fecha.dateTime().toString("dd/MM/yyyy  HH:mm"),
-            "tipo":            self.combo_tipo.currentText(),
-            "motivo":          self.input_motivo.toPlainText().strip(),
-            "anamnesis":       self.input_anamnesis.toPlainText().strip(),
-            "ta":              self.input_ta.text().strip(),
-            "fc":              self.input_fc.text().strip(),
-            "fr":              self.input_fr.text().strip(),
-            "temp":            self.input_temp.text().strip(),
-            "peso":            self.input_peso.text().strip(),
-            "talla":           self.input_talla.text().strip(),
-            "examen_fisico":   self.input_examen.toPlainText().strip(),
-            "diagnostico":     self.input_diagnostico.toPlainText().strip(),
-            "plan":            self.input_plan.toPlainText().strip(),
-            "proxima_cita":    self.input_proxima.text().strip(),
-        }
+            if f_tipo != "Tipo: Todos" and tipo != f_tipo:
+                continue
 
-        try:
-            if self._sesion_id:
-                self.db._db.collection("sesiones").document(self._sesion_id).update(datos)
-                QMessageBox.information(self, "✅ Éxito", "Sesión actualizada correctamente.")
+            if f_pnf == "Sin asignar":
+                if pnf:
+                    continue
+            elif f_pnf != "Todos los PNF" and pnf != f_pnf:
+                continue
+
+            if f_tray == "Sin asignar":
+                if tray:
+                    continue
+            elif f_tray != "Todos los Trayectos" and tray != f_tray:
+                continue
+
+            if f_sec == "Sin asignar":
+                if sec:
+                    continue
+            elif f_sec != "Todas las Secciones" and sec != f_sec:
+                continue
+
+            if f_anio == "Sin asignar":
+                if anio:
+                    continue
+            elif f_anio != "Todos los Años" and anio != f_anio:
+                continue
+
+            if usar_fecha:
+                ds = QDate.fromString(s.get("fecha", ""), "dd/MM/yyyy")
+                if not ds.isValid() or not (d_desde <= ds <= d_hasta):
+                    continue
+
+            filtradas.append((s, pac))
+
+        self._poblar_tabla(filtradas)
+
+    def _poblar_tabla(self, registros: list):
+        self.table.setRowCount(0)
+        n_primera = 0
+        n_sucesiva = 0
+        pacientes_unicos = set()
+
+        for i, (s, pac) in enumerate(registros):
+            self.table.insertRow(i)
+            ced = (pac.get("cedula", "") if pac else s.get("paciente_cedula", "")) or "—"
+            nom = (pac.get("nombre", "") if pac else s.get("paciente_nombre", "")) or "—"
+            pnf = (pac.get("pnf", "") if pac else "") or "Sin asignar"
+            tray = (pac.get("trayecto", "") if pac else "") or "—"
+            sec = (normalize_seccion(pac.get("seccion", "")) if pac else "") or "—"
+            anio = (str(pac.get("anio_academico", "")).strip() if pac else "") or "—"
+            tipo = s.get("tipo", "Sucesiva")
+            evo = s.get("evolucion", s.get("notas", "")) or ""
+            rec = s.get("nota_recordatorio", "") or ""
+            pid = (pac.get("id", "") if pac else s.get("paciente_id", "")) or ""
+
+            if tipo == "Primera vez":
+                n_primera += 1
             else:
-                # Inyectar user_id del médico en sesión
-                uid = self.db.get_current_user_id()
-                if not uid:
-                    try:
-                        from core.auth_manager import AuthManager
-                        uid = AuthManager().get_uid()
-                    except Exception:
-                        pass
-                datos["user_id"] = uid or ""
-                if hasattr(self.db, "crear_sesion"):
-                    self.db.crear_sesion(datos)
-                else:
-                    self.db._db.collection("sesiones").add(datos)
-                QMessageBox.information(self, "✅ Éxito", "Sesión registrada correctamente.")
+                n_sucesiva += 1
+            if pid or ced != "—":
+                pacientes_unicos.add(pid or ced)
 
-            self.clear_form()
-            self.load_data()
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"No se pudo guardar la sesión:\n{e}")
+            vals = [
+                s.get("fecha", "—"),
+                s.get("hora", "—"),
+                ced,
+                nom,
+                pnf,
+                tray,
+                sec,
+                anio,
+                tipo,
+                evo,
+                rec,
+                s.get("id", ""),
+            ]
+            for j, val in enumerate(vals):
+                item = QTableWidgetItem(val)
+                if j == 8:
+                    item.setForeground(QColor("#047857" if tipo == "Primera vez" else "#1d4ed8"))
+                self.table.setItem(i, j, item)
 
-    def _eliminar(self):
+            self.table.item(i, 0).setData(Qt.ItemDataRole.UserRole, pid)
+
+        total = len(registros)
+        self.lbl_kpi_total.setText(str(total))
+        self.lbl_kpi_primera.setText(str(n_primera))
+        self.lbl_kpi_sucesiva.setText(str(n_sucesiva))
+        self.lbl_kpi_pacientes.setText(str(len(pacientes_unicos)))
+        self.lbl_count.setText(f"{total} consulta(s) mostrada(s) de {len(self._sesiones_cache)} registradas")
+
+    def _limpiar_filtros(self):
+        for w in (
+            self.combo_filtro_tipo, self.combo_filtro_pnf,
+            self.combo_filtro_tray, self.combo_filtro_sec, self.combo_filtro_anio
+        ):
+            w.blockSignals(True)
+            w.setCurrentIndex(0)
+            w.blockSignals(False)
+        self.chk_fecha.blockSignals(True)
+        self.chk_fecha.setChecked(False)
+        self.chk_fecha.blockSignals(False)
+        self.search_input.blockSignals(True)
+        self.search_input.clear()
+        self.search_input.blockSignals(False)
+        self._aplicar_filtros()
+
+    def _abrir_historia_seleccionada(self):
         rows = self.table.selectionModel().selectedRows()
         if not rows:
-            QMessageBox.information(self, "Selección", "Selecciona una sesión para eliminar.")
+            QMessageBox.information(self, "Selección", "Selecciona un registro de la bitácora.")
             return
-        row = rows[0].row()
-        id_item = self.table.item(row, 4)
-        if not id_item or not id_item.text():
-            return
+        self._abrir_historia_fila(self.table.item(rows[0].row(), 0))
 
-        reply = QMessageBox.question(self, "Confirmar",
-            "¿Eliminar esta sesión clínica?\nEsta acción no se puede deshacer.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if reply == QMessageBox.StandardButton.Yes:
-            try:
-                self.db._db.collection("sesiones").document(id_item.text()).delete()
-                self.clear_form()
-                self.load_data()
-                QMessageBox.information(self, "✅", "Sesión eliminada.")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"No se pudo eliminar:\n{e}")
-
-    def _imprimir_sesion(self):
-        """Genera e imprime la sesión actual en PDF."""
-        paciente_text = self.combo_paciente.currentText().strip()
-        if not paciente_text:
-            QMessageBox.warning(self, "Incompleto", "Selecciona un paciente antes de imprimir la sesión.")
-            return
-
-        try:
-            from ui.dialogs.pdf_generator import generar_pdf_sesion
-            from PyQt6.QtWidgets import QFileDialog
-
-            fecha_str = self.input_fecha.dateTime().toString("yyyyMMdd_HHmm")
-            paciente_slug = paciente_text.split("[")[0].strip().replace(" ", "_")
-            default_name = f"Sesion_{paciente_slug}_{fecha_str}.pdf"
-
-            path, _ = QFileDialog.getSaveFileName(
-                self, "Guardar Sesión Clínica PDF", default_name, "PDF (*.pdf)"
+    def _abrir_historia_fila(self, item):
+        pid = self.table.item(item.row(), 0).data(Qt.ItemDataRole.UserRole)
+        if not pid:
+            QMessageBox.information(
+                self, "Sin vínculo", "Este registro no tiene un paciente vinculado."
             )
-            if path:
-                datos = {
-                    "paciente_nombre": paciente_text,
-                    "fecha":           self.input_fecha.dateTime().toString("dd/MM/yyyy  HH:mm"),
-                    "tipo":            self.combo_tipo.currentText(),
-                    "motivo":          self.input_motivo.toPlainText().strip(),
-                    "anamnesis":       self.input_anamnesis.toPlainText().strip(),
-                    "ta":              self.input_ta.text().strip(),
-                    "fc":              self.input_fc.text().strip(),
-                    "fr":              self.input_fr.text().strip(),
-                    "temp":            self.input_temp.text().strip(),
-                    "peso":            self.input_peso.text().strip(),
-                    "talla":           self.input_talla.text().strip(),
-                    "examen_fisico":   self.input_examen.toPlainText().strip(),
-                    "diagnostico":     self.input_diagnostico.toPlainText().strip(),
-                    "plan":            self.input_plan.toPlainText().strip(),
-                    "proxima_cita":    self.input_proxima.text().strip(),
-                }
-                generar_pdf_sesion(path, datos)
-                QMessageBox.information(self, "✅ PDF generado", f"Informe de sesión guardado en:\n{path}")
-        except ImportError:
-            QMessageBox.warning(self, "PDF no disponible", "Instala reportlab: pip install reportlab")
-        except Exception as e:
-            QMessageBox.critical(self, "Error al generar PDF", str(e))
+            return
+        self.abrir_historia_requested.emit(pid)
 
-    def clear_form(self):
-        self._sesion_id = None
-        self.combo_paciente.setCurrentIndex(-1)
-        self.combo_paciente.clearEditText()
-        self.input_fecha.setDateTime(QDateTime.currentDateTime())
-        self.combo_tipo.setCurrentIndex(0)
-        for attr in ("input_motivo", "input_anamnesis", "input_examen",
-                     "input_diagnostico", "input_plan"):
-            getattr(self, attr).clear()
-        for attr in ("input_ta", "input_fc", "input_fr", "input_temp",
-                     "input_peso", "input_talla", "input_proxima"):
-            getattr(self, attr).clear()
-        self.form_title.setText("📋  Nueva Sesión Clínica")
-        self.btn_guardar.setText("💾  Guardar Sesión")
-
-    # ── Helpers ──────────────────────────────────────────────
-
-    def _lbl(self, text: str) -> QLabel:
-        l = QLabel(text)
-        l.setStyleSheet("font-size: 12px; color: #374151; font-weight: 500;")
-        l.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        return l
-
-    @staticmethod
-    def _sep() -> QFrame:
-        f = QFrame()
-        f.setFrameShape(QFrame.Shape.HLine)
-        f.setStyleSheet("background: #e2e8f0; max-height: 1px; border: none;")
-        return f
-
-    @staticmethod
-    def _section(title: str) -> QLabel:
-        l = QLabel(title)
-        l.setStyleSheet(
-            "font-size: 13px; font-weight: bold; color: #3b82f6; "
-            "background: #eff6ff; border-radius: 6px; padding: 4px 8px;"
+    def _eliminar_registro(self):
+        rows = self.table.selectionModel().selectedRows()
+        if not rows:
+            QMessageBox.information(self, "Selección", "Selecciona un registro para eliminar.")
+            return
+        sid = self.table.item(rows[0].row(), 11).text()
+        if not sid:
+            return
+        reply = QMessageBox.question(
+            self, "Confirmar", "¿Eliminar esta consulta de la bitácora y del historial?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
-        return l
+        if reply == QMessageBox.StandardButton.Yes:
+            if hasattr(self.db, "eliminar_sesion") and self.db.eliminar_sesion(sid):
+                self.load_data()
+                self.sesion_actualizada.emit()
+                QMessageBox.information(self, "✅", "Registro eliminado.")
+            else:
+                QMessageBox.warning(self, "Error", "No se pudo eliminar el registro.")

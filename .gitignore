@@ -53,3 +53,9 @@ install_update.bat
 
 *.db
 local_storage.db
+recetas_guardadas.json
+pacientes_local.json
+SistemaClinico.exe
+_internal/
+python3t.dll
+*.pdf

@@ -5,7 +5,9 @@ from PyQt6.QtWidgets import (
     QCheckBox, QFrame, QGraphicsDropShadowEffect
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QFont
+from PyQt6.QtGui import QColor, QFont, QPixmap
+import os
+from ui.widgets.app_icons import svg_pixmap
 
 
 class LoginView(QWidget):
@@ -16,115 +18,133 @@ class LoginView(QWidget):
     def setup_ui(self):
         self.setObjectName("loginBackground")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet("""
-            QWidget#loginBackground {
-                background-color: #f8fafc;
-                font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
-            }
-        """)
 
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         
         # ══════════════════════════════════════════════════════════
-        # COLUMNA IZQUIERDA (Banner Institucional Clínico)
+        # COLUMNA IZQUIERDA (Banner Institucional Clínico — PSIQUE)
         # ══════════════════════════════════════════════════════════
         left_banner = QWidget()
         left_banner.setObjectName("leftBanner")
         left_banner.setStyleSheet("""
             QWidget#leftBanner {
                 background: qlineargradient(
-                    x1:0, y1:0, x2:1, y2:1,
-                    stop:0 #0f2b48,
-                    stop:0.5 #163e65,
-                    stop:1 #1e5282
+                    x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #132a2e,
+                    stop:1 #0d1f22
                 );
+                border-right: 1px solid #1e3a3f;
             }
         """)
         left_layout = QVBoxLayout(left_banner)
-        left_layout.setContentsMargins(60, 50, 60, 50)
+        left_layout.setContentsMargins(56, 44, 56, 40)
         left_layout.setSpacing(0)
         
         # Badge superior
-        badge = QLabel("🏥  SISTEMA DE GESTIÓN MÉDICA INTEGRAL")
+        badge = QLabel("SISTEMA DE GESTIÓN CLÍNICO PSICOLÓGICA")
         badge.setStyleSheet("""
-            background: rgba(255, 255, 255, 0.12);
-            color: #93c5fd;
+            background: rgba(45, 212, 191, 0.12);
+            color: #5eead4;
             font-size: 11px;
             font-weight: 700;
-            letter-spacing: 1.5px;
+            letter-spacing: 1.4px;
             padding: 6px 14px;
             border-radius: 14px;
-            border: 1px solid rgba(147, 197, 253, 0.3);
+            border: 1px solid rgba(45, 212, 191, 0.35);
         """)
         badge.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         left_layout.addWidget(badge)
         
-        left_layout.addSpacing(30)
+        left_layout.addSpacing(24)
+
+        # Logo representativo del sistema
+        from core.app_paths import resource_path
+        icon_path = resource_path(os.path.join("data", "app_icon.png"))
+        if os.path.exists(icon_path):
+            logo_lbl = QLabel()
+            logo_lbl.setFixedSize(82, 82)
+            logo_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            logo_lbl.setStyleSheet(
+                "background: #ffffff; border-radius: 18px; padding: 6px;"
+            )
+            logo_lbl.setPixmap(
+                QPixmap(icon_path).scaled(
+                    68, 68, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+                )
+            )
+            left_layout.addWidget(logo_lbl)
+            left_layout.addSpacing(16)
         
         # Logo / Icono + Título
         title_box = QVBoxLayout()
         title_box.setSpacing(6)
         
-        banner_title = QLabel("Registro\nClínico Pro")
+        banner_title = QLabel("PSIQUE")
         banner_title.setStyleSheet("""
             color: #ffffff;
             font-size: 44px;
             font-weight: 800;
+            letter-spacing: 1.5px;
             line-height: 1.1;
         """)
         title_box.addWidget(banner_title)
         
-        banner_sub = QLabel("Plataforma médica de historias, citas y prescripciones farmacológicas.")
+        banner_sub = QLabel(
+            "Sistema de Gestión Clínico Psicológica: identificación, historias clínicas, agenda y fármacos integrados."
+        )
         banner_sub.setWordWrap(True)
         banner_sub.setStyleSheet("""
             color: #cbd5e1;
             font-size: 15px;
-            line-height: 1.4;
+            line-height: 1.45;
             margin-top: 6px;
         """)
         title_box.addWidget(banner_sub)
         left_layout.addLayout(title_box)
         
-        left_layout.addSpacing(40)
+        left_layout.addSpacing(32)
         
-        # ── Feature Cards (Indicadores destacados) ──
+        # ── Feature Cards (Indicadores destacados con iconos SVG) ──
         features = [
-            ("📋", "Expediente Digital 360°", "Ficha de identificación con formato cédula y control de antecedentes."),
-            ("📅", "Agenda Médica Visual", "Calendario mensual interactivo con filtrado y estados codificados."),
-            ("💊", "Recetario con Catálogo", "Catálogo integrado de ~80 fármacos, dosis usuales y exportación a PDF.")
+            ("file-text", "Expediente Digital 1-a-1", "Identificación académica por PNF, historia clínica y evolución cronológica."),
+            ("calendar", "Agenda y Recordatorios", "Calendario visual sincronizado con alertas de última visita y notas."),
+            ("pill", "Fármacos y Recetas PDF", "Alertas de alergias, condición IPX, catálogo y exportación en PDF.")
         ]
         
-        for icon, feat_title, feat_desc in features:
+        for icon_name, feat_title, feat_desc in features:
             f_card = QFrame()
+            f_card.setObjectName("FeatureCard")
             f_card.setStyleSheet("""
-                QFrame {
-                    background: rgba(255, 255, 255, 0.07);
-                    border: 1px solid rgba(255, 255, 255, 0.12);
+                QFrame#FeatureCard {
+                    background: rgba(255, 255, 255, 0.06);
+                    border: 1px solid rgba(255, 255, 255, 0.11);
                     border-radius: 10px;
-                    padding: 10px 14px;
                 }
-                QFrame:hover {
-                    background: rgba(255, 255, 255, 0.11);
-                    border-color: rgba(147, 197, 253, 0.4);
+                QFrame#FeatureCard:hover {
+                    background: rgba(255, 255, 255, 0.10);
+                    border-color: rgba(45, 212, 191, 0.45);
                 }
             """)
             f_lay = QHBoxLayout(f_card)
-            f_lay.setContentsMargins(8, 8, 8, 8)
-            f_lay.setSpacing(12)
+            f_lay.setContentsMargins(16, 12, 16, 12)
+            f_lay.setSpacing(14)
             
-            icon_lbl = QLabel(icon)
-            icon_lbl.setStyleSheet("font-size: 22px; background: transparent;")
+            icon_lbl = QLabel()
+            icon_lbl.setPixmap(svg_pixmap(icon_name, color="#2dd4bf", size=22))
+            icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            icon_lbl.setStyleSheet("background: transparent; border: none; padding: 0px; margin: 0px;")
+            icon_lbl.setFixedSize(28, 28)
             f_lay.addWidget(icon_lbl)
             
             t_box = QVBoxLayout()
-            t_box.setSpacing(2)
+            t_box.setSpacing(3)
             lbl_t = QLabel(feat_title)
-            lbl_t.setStyleSheet("color: #ffffff; font-weight: bold; font-size: 13px; background: transparent;")
+            lbl_t.setStyleSheet("color: #ffffff; font-weight: bold; font-size: 13px; background: transparent; border: none; padding: 0px;")
             lbl_d = QLabel(feat_desc)
             lbl_d.setWordWrap(True)
-            lbl_d.setStyleSheet("color: #94a3b8; font-size: 11px; background: transparent;")
+            lbl_d.setStyleSheet("color: #9bb5b8; font-size: 11.5px; background: transparent; border: none; padding: 0px;")
             t_box.addWidget(lbl_t)
             t_box.addWidget(lbl_d)
             f_lay.addLayout(t_box)
@@ -135,20 +155,20 @@ class LoginView(QWidget):
         left_layout.addStretch()
         
         # Footer izquierdo
-        footer_lbl = QLabel("🔒 Conexión Segura Firebase Cloud • Versión 2.5 Pro")
-        footer_lbl.setStyleSheet("color: #64748b; font-size: 11px;")
+        try:
+            from core.update_manager import CURRENT_VERSION
+            ver_txt = CURRENT_VERSION
+        except Exception:
+            ver_txt = "1.1.0"
+        footer_lbl = QLabel(f"Conexión Segura Firebase Cloud • PSIQUE v{ver_txt}")
+        footer_lbl.setStyleSheet("color: #7c989b; font-size: 11px;")
         left_layout.addWidget(footer_lbl)
         
         # ══════════════════════════════════════════════════════════
         # COLUMNA DERECHA (Formulario de Acceso)
         # ══════════════════════════════════════════════════════════
         right_panel = QWidget()
-        right_panel.setObjectName("rightPanel")
-        right_panel.setStyleSheet("""
-            QWidget#rightPanel {
-                background-color: #ffffff;
-            }
-        """)
+        right_panel.setObjectName("formContainer")
         right_panel.setMinimumWidth(440)
         right_panel.setMaximumWidth(540)
         
@@ -159,13 +179,9 @@ class LoginView(QWidget):
         right_layout.addStretch()
         
         # Título y Subtítulo
-        title_label = QLabel("Bienvenido de nuevo")
+        title_label = QLabel("Bienvenido a PSIQUE")
         title_label.setObjectName("titleLabel")
-        title_label.setStyleSheet("""
-            color: #0f172a;
-            font-size: 26px;
-            font-weight: 700;
-        """)
+        title_label.setStyleSheet("font-size: 26px; font-weight: 800; letter-spacing: -0.5px;")
         right_layout.addWidget(title_label)
         
         subtitle_label = QLabel("Ingresa tus credenciales para acceder a la clínica")

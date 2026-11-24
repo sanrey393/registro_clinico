@@ -1,13 +1,13 @@
 /* theme.qss - Estilo ultra-moderno para el sistema clínico */
 
 QWidget {
-    color: #333333;
-    font-family: "Segoe UI", "Inter", "Roboto", sans-serif;
-    font-size: 14px;
+    color: #1e293b;
+    font-family: "Segoe UI Variable", "Segoe UI", "Inter", sans-serif;
+    font-size: 13.5px;
 }
 
 QWidget#loginBackground {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #e0eafc, stop:1 #cfdef3);
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #eef2f6, stop:1 #e0ecea);
 }
 
 /* Modificadores para el formulario de login */

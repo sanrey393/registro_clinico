@@ -66,15 +66,6 @@ def build_exe():
         else:
             print(f"  [ADVERTENCIA] {filename} no encontrado - el sistema puede no autenticarse correctamente.")
 
-    # Asegurar copia de python3t.dll para compatibilidad con cryptography / _rust.pyd (Python 3.13+)
-    abi3t_src = os.path.join(os.path.dirname(PYTHON), "abi3t-compat", "python3t.dll")
-    if os.path.exists(abi3t_src):
-        internal_dir = os.path.join(DIST_DIR, "_internal")
-        if os.path.exists(internal_dir):
-            shutil.copy2(abi3t_src, os.path.join(internal_dir, "python3t.dll"))
-        shutil.copy2(abi3t_src, os.path.join(DIST_DIR, "python3t.dll"))
-        print("  [OK] python3t.dll copiado para soporte de cryptography (_rust)")
-
     size_mb = sum(
         f.stat().st_size for f in __import__("pathlib").Path(DIST_DIR).rglob("*") if f.is_file()
     ) / (1024 * 1024)

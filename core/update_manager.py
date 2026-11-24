@@ -1,27 +1,37 @@
 # core/update_manager.py
 # Gestor de comprobación de actualizaciones remotas en segundo plano
 
-import os
 import json
+import os
 import urllib.request
 from PyQt6.QtCore import QThread, pyqtSignal, QObject
-from core.app_paths import app_dir
+from core.app_paths import app_dir, resource_path
 
-def get_local_version() -> str:
-    """Obtiene la versión local instalada desde version.json, o '1.1.0' por defecto."""
-    try:
-        v_path = os.path.join(app_dir(), "version.json")
-        if os.path.exists(v_path):
-            with open(v_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                return data.get("version", "1.1.0").strip().lstrip("vV")
-    except Exception:
-        pass
-    return "1.1.0"
-
-CURRENT_VERSION = get_local_version()
+FALLBACK_VERSION = "2.0.0"
 VERSION_JSON_URL = "https://raw.githubusercontent.com/sanrey393/registro_clinico/main/version.json"
 GITHUB_RELEASES_API = "https://api.github.com/repos/sanrey393/registro_clinico/releases/latest"
+
+
+def get_current_version() -> str:
+    """Lee la versión actual desde version.json; usa FALLBACK_VERSION si no está disponible."""
+    candidates = [
+        os.path.join(app_dir(), "version.json"),
+        resource_path("version.json"),
+    ]
+    for path in candidates:
+        if path and os.path.isfile(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                ver = str(data.get("version", "")).strip().lstrip("vV")
+                if ver:
+                    return ver
+            except Exception as e:
+                print(f"[WARN] No se pudo leer {path}: {e}")
+    return FALLBACK_VERSION
+
+
+CURRENT_VERSION = get_current_version()
 
 
 def parse_version_tuple(v_str: str) -> tuple:
@@ -108,16 +118,29 @@ class UpdateManager(QObject):
         super().__init__(parent)
         self._worker = None
 
+    def _on_worker_finished(self):
+        worker = self._worker
+        self._worker = None
+        if worker is not None:
+            worker.deleteLater()
+
+    def stop(self):
+        """Detiene limpiamente el hilo de verificación si sigue activo al cerrar la app."""
+        if self._worker and self._worker.isRunning():
+            self._worker.requestInterruption()
+            self._worker.wait(3000)
+
     def check(self, on_update_available=None, on_up_to_date=None, on_error=None):
         """Inicia la comprobación asíncrona."""
         if self._worker and self._worker.isRunning():
             return
 
-        self._worker = CheckUpdateWorker()
+        self._worker = CheckUpdateWorker(parent=self)
         if on_update_available:
             self._worker.update_available.connect(on_update_available)
         if on_up_to_date:
             self._worker.up_to_date.connect(on_up_to_date)
         if on_error:
             self._worker.check_error.connect(on_error)
+        self._worker.finished.connect(self._on_worker_finished)
         self._worker.start()

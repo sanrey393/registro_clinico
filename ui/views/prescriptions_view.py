@@ -10,10 +10,12 @@ from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit,
     QFrame, QMessageBox, QComboBox, QDateEdit, QTextEdit,
     QGridLayout, QCompleter, QScrollArea, QAbstractItemView,
-    QApplication, QFileDialog
+    QApplication, QFileDialog, QListView
 )
 from PyQt6.QtCore import Qt, QDate, QStringListModel, QThread, pyqtSignal
 from PyQt6.QtGui import QColor, QFont
+from ui.widgets.smart_date_edit import SmartDateEdit
+from ui.widgets.app_icons import svg_icon
 
 from data.farmacos_catalogo import (
     obtener_catalogo_completo,
@@ -149,27 +151,39 @@ class PrescriptionsView(QWidget):
     - Botones exactos: 'Buscar', 'Muestras todo', 'Guardar Receta', 'Editar', 'Nueva Receta', 'Imprimir PDF'.
     """
 
+    receta_actualizada = pyqtSignal(dict)
+    agendar_control_requested = pyqtSignal(str)
+
     def __init__(self, db_manager=None, parent=None):
         super().__init__(parent)
         self.db = db_manager
-        self.setStyleSheet(STYLE)
 
         self._receta_actual_id = None
         self._pacientes_cache = []
+        self._historias_cache = []
         self._recetas_cache = []
         self._catalogo_farmacos = []
         self._online_thread = None
+        self._syncing_combo = False
 
         self._init_ui()
         self._cargar_catalogo_farmacos()
         if hasattr(self.db, "get_current_user_id") and self.db.get_current_user_id():
-            self._cargar_pacientes()
-            self._cargar_recetas()
+            self.load_data()
 
     def load_data(self):
-        """Recarga pacientes y recetas desde la base de datos para el usuario médico en sesión."""
+        """Recarga pacientes, historias, recetas y alertas clínicas."""
         self._cargar_pacientes()
+        try:
+            self._historias_cache = (
+                self.db.obtener_historias_clinicas()
+                if self.db and hasattr(self.db, "obtener_historias_clinicas")
+                else []
+            )
+        except Exception:
+            self._historias_cache = []
         self._cargar_recetas()
+        self._actualizar_alerta_clinica()
 
     # ── Construcción de la Interfaz ──────────────────────────────
 
@@ -206,14 +220,7 @@ class PrescriptionsView(QWidget):
 
     def _build_prescription_form_panel(self) -> QFrame:
         card = QFrame()
-        card.setObjectName("formCard")
-        card.setStyleSheet("""
-            QFrame#formCard {
-                background: #ffffff;
-                border-radius: 12px;
-                border: 1px solid #e2e8f0;
-            }
-        """)
+        card.setObjectName("card")
         lay = QVBoxLayout(card)
         lay.setContentsMargins(20, 16, 20, 16)
         lay.setSpacing(12)
@@ -221,7 +228,7 @@ class PrescriptionsView(QWidget):
         # Título del módulo
         top_row = QHBoxLayout()
         lbl_titulo = QLabel("💊  Recetación y Fármacos del Paciente")
-        lbl_titulo.setStyleSheet("font-size: 18px; font-weight: 800; color: #0f172a;")
+        lbl_titulo.setStyleSheet("font-size: 18px; font-weight: 800;")
         top_row.addWidget(lbl_titulo)
 
         top_row.addStretch()
@@ -235,35 +242,75 @@ class PrescriptionsView(QWidget):
         grid_paciente = QGridLayout()
         grid_paciente.setSpacing(10)
 
-        # Selector de Paciente
+        # Selector de Paciente (Filtro + Desplegable clicable)
         grid_paciente.addWidget(self._lbl_negrita("👤 Paciente a Recetar: *"), 0, 0)
+        pac_wrap = QWidget()
+        pac_lay = QHBoxLayout(pac_wrap)
+        pac_lay.setContentsMargins(0, 0, 0, 0)
+        pac_lay.setSpacing(6)
+
+        self.input_buscar_pac = QLineEdit()
+        self.input_buscar_pac.setPlaceholderText("🔍 Filtrar cédula/nombre...")
+        self.input_buscar_pac.setMaximumWidth(185)
+        self.input_buscar_pac.textChanged.connect(self._filtrar_combo_pacientes)
+        pac_lay.addWidget(self.input_buscar_pac)
+
         self.combo_paciente = QComboBox()
-        self.combo_paciente.setEditable(True)
-        self.combo_paciente.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        self.combo_paciente.setPlaceholderText("Seleccione o escriba el nombre o cédula del paciente...")
-        self.combo_paciente.lineEdit().setPlaceholderText("Seleccione o escriba el nombre o cédula del paciente...")
-        grid_paciente.addWidget(self.combo_paciente, 0, 1, 1, 2)
+        self.combo_paciente.setView(QListView())
+        self.combo_paciente.setEditable(False)
+        self.combo_paciente.setToolTip("Haz clic para desplegar los pacientes registrados")
+        self.combo_paciente.currentIndexChanged.connect(lambda _i: self._actualizar_alerta_clinica())
+        pac_lay.addWidget(self.combo_paciente, 1)
+        grid_paciente.addWidget(pac_wrap, 0, 1, 1, 2)
 
         # Fecha
         grid_paciente.addWidget(self._lbl_negrita("📅 Fecha:"), 0, 3)
-        self.input_fecha = QDateEdit()
-        self.input_fecha.setCalendarPopup(True)
-        self.input_fecha.setDisplayFormat("dd/MM/yyyy")
-        self.input_fecha.setDate(QDate.currentDate())
+        self.input_fecha = SmartDateEdit(QDate.currentDate())
+        self.input_fecha.setMinimumWidth(160)
         grid_paciente.addWidget(self.input_fecha, 0, 4)
 
-        # Médico y Especialidad
+        # Médico, Especialidad y Estado del tratamiento
         grid_paciente.addWidget(self._lbl_negrita("🩺 Médico:"), 1, 0)
         self.input_medico = QLineEdit()
         self.input_medico.setPlaceholderText("Nombre del profesional de la salud...")
         grid_paciente.addWidget(self.input_medico, 1, 1)
 
         grid_paciente.addWidget(self._lbl_negrita("Especialidad:"), 1, 2)
-        self.input_especialidad = QLineEdit()
-        self.input_especialidad.setPlaceholderText("Psicología / Psiquiatría / Medicina...")
-        grid_paciente.addWidget(self.input_especialidad, 1, 3, 1, 2)
+        self.combo_especialidad = QComboBox()
+        self.combo_especialidad.setView(QListView())
+        self.combo_especialidad.setEditable(False)
+        self.combo_especialidad.addItems([
+            "Psiquiatría",
+            "Psicología Clínica",
+            "Neurología",
+            "Neuropediatría",
+            "Medicina General",
+            "Medicina Interna",
+            "Medicina Familiar",
+            "Pediatría",
+            "Psiquiatría Infanto-Juvenil",
+            "Endocrinología",
+            "Otra",
+        ])
+        self.combo_especialidad.setToolTip("Selecciona la especialidad médica que emite la receta")
+        grid_paciente.addWidget(self.combo_especialidad, 1, 3)
+
+        self.combo_estado_tratamiento = QComboBox()
+        self.combo_estado_tratamiento.setView(QListView())
+        self.combo_estado_tratamiento.addItems(["Activo", "Finalizado", "Suspendido"])
+        self.combo_estado_tratamiento.setToolTip("Estado actual del tratamiento farmacológico")
+        grid_paciente.addWidget(self.combo_estado_tratamiento, 1, 4)
 
         lay.addLayout(grid_paciente)
+
+        # Alerta clínica (Alergias / Otros datos de Identificación + Condición IPX de Historia)
+        self.lbl_alerta_clinica = QLabel("Selecciona un paciente para ver sus alergias, notas y condición clínica (IPX).")
+        self.lbl_alerta_clinica.setWordWrap(True)
+        self.lbl_alerta_clinica.setStyleSheet(
+            "background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 7px; "
+            "color: #475569; padding: 7px 10px; font-size: 12px;"
+        )
+        lay.addWidget(self.lbl_alerta_clinica)
 
         # Separador interno
         sep_in = QFrame()
@@ -273,7 +320,7 @@ class PrescriptionsView(QWidget):
 
         # ── Sección de Campos de Escritura del Fármaco ─────────
         lbl_sec_farmaco = QLabel("📝  Datos del Fármaco y Dosificación (Escriba o seleccione de la lista / API)")
-        lbl_sec_farmaco.setStyleSheet("font-size: 13px; font-weight: 700; color: #334155;")
+        lbl_sec_farmaco.setStyleSheet("font-size: 13px; font-weight: 700;")
         lay.addWidget(lbl_sec_farmaco)
 
         grid_campos = QGridLayout()
@@ -348,26 +395,38 @@ class PrescriptionsView(QWidget):
 
         btn_box.addStretch()
 
-        self.btn_imprimir = QPushButton("🖨️  Imprimir PDF")
+        self.btn_agendar_control = QPushButton(" Agendar Control")
+        self.btn_agendar_control.setObjectName("btnSuccess")
+        self.btn_agendar_control.setIcon(svg_icon("calendar", color="#047857", size=15))
+        self.btn_agendar_control.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_agendar_control.setToolTip("Abrir Agenda con este paciente para programar cita de control")
+        self.btn_agendar_control.clicked.connect(self._ir_a_agendar_control)
+        btn_box.addWidget(self.btn_agendar_control)
+
+        self.btn_imprimir = QPushButton(" Imprimir PDF")
         self.btn_imprimir.setObjectName("btnWarning")
+        self.btn_imprimir.setIcon(svg_icon("printer", color="#475569", size=15))
         self.btn_imprimir.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_imprimir.clicked.connect(self._imprimir_pdf)
         btn_box.addWidget(self.btn_imprimir)
 
-        self.btn_editar = QPushButton("✏️  Editar Seleccionado")
+        self.btn_editar = QPushButton(" Editar Seleccionado")
         self.btn_editar.setObjectName("btnSecondary")
+        self.btn_editar.setIcon(svg_icon("file-text", color="#475569", size=15))
         self.btn_editar.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_editar.clicked.connect(self._editar_seleccionado_de_tabla)
         btn_box.addWidget(self.btn_editar)
 
-        self.btn_eliminar = QPushButton("🗑️  Eliminar")
+        self.btn_eliminar = QPushButton(" Eliminar")
         self.btn_eliminar.setObjectName("btnDanger")
+        self.btn_eliminar.setIcon(svg_icon("trash", color="#dc2626", size=15))
         self.btn_eliminar.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_eliminar.clicked.connect(self._eliminar_receta)
         btn_box.addWidget(self.btn_eliminar)
 
-        self.btn_guardar = QPushButton("💾  Guardar Receta")
+        self.btn_guardar = QPushButton(" Guardar Receta")
         self.btn_guardar.setObjectName("btnPrimary")
+        self.btn_guardar.setIcon(svg_icon("save", color="#ffffff", size=15))
         self.btn_guardar.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_guardar.clicked.connect(self._guardar_receta)
         btn_box.addWidget(self.btn_guardar)
@@ -378,14 +437,7 @@ class PrescriptionsView(QWidget):
 
     def _build_history_panel(self) -> QFrame:
         card = QFrame()
-        card.setObjectName("histCard")
-        card.setStyleSheet("""
-            QFrame#histCard {
-                background: #ffffff;
-                border-radius: 12px;
-                border: 1px solid #e2e8f0;
-            }
-        """)
+        card.setObjectName("card")
         lay = QVBoxLayout(card)
         lay.setContentsMargins(18, 14, 18, 14)
         lay.setSpacing(10)
@@ -395,7 +447,7 @@ class PrescriptionsView(QWidget):
         busq_bar.setSpacing(10)
 
         lbl_b = QLabel("📋  Historial de Recetas:")
-        lbl_b.setStyleSheet("font-size: 14px; font-weight: 700; color: #1e293b;")
+        lbl_b.setStyleSheet("font-size: 14px; font-weight: 700;")
         busq_bar.addWidget(lbl_b)
 
         self.input_buscar = QLineEdit()
@@ -573,7 +625,6 @@ class PrescriptionsView(QWidget):
 
     def _cargar_pacientes(self):
         """Llena el combo de pacientes desde la base de datos."""
-        self.combo_paciente.clear()
         self._pacientes_cache = []
 
         if self.db and hasattr(self.db, "obtener_pacientes"):
@@ -592,12 +643,103 @@ class PrescriptionsView(QWidget):
                 except Exception:
                     pass
 
+        self._poblar_combo_pacientes(
+            self.input_buscar_pac.text() if hasattr(self, "input_buscar_pac") else ""
+        )
+
+    def _poblar_combo_pacientes(self, filtro: str = ""):
+        prev_data = self.combo_paciente.currentData() if self.combo_paciente.count() else None
+        prev_id = prev_data.get("id") if isinstance(prev_data, dict) else None
+        q = (filtro or "").strip().lower()
+        self._syncing_combo = True
+        self.combo_paciente.clear()
         self.combo_paciente.addItem("-- Seleccione un paciente --", None)
-        for p in self._pacientes_cache:
+        for p in sorted(self._pacientes_cache, key=lambda x: (x.get("nombre", "") or "").lower()):
             nom = p.get("nombre", "") or p.get("nombre_completo", "Sin Nombre")
             ced = p.get("cedula", "")
-            txt = f"{nom} (CI: {ced})" if ced else nom
+            if q and (q not in nom.lower() and q not in ced.lower()):
+                continue
+            pnf = p.get("pnf", "")
+            extra = f" · {pnf}" if pnf and pnf != "No aplica / Externo" else ""
+            txt = f"{nom} (CI: {ced}{extra})" if ced else nom
             self.combo_paciente.addItem(txt, p)
+        if prev_id:
+            for i in range(self.combo_paciente.count()):
+                d = self.combo_paciente.itemData(i)
+                if isinstance(d, dict) and d.get("id") == prev_id:
+                    self.combo_paciente.setCurrentIndex(i)
+                    break
+        self._syncing_combo = False
+
+    def _filtrar_combo_pacientes(self, text: str):
+        self._poblar_combo_pacientes(text)
+
+    def seleccionar_paciente_por_id(self, paciente_id: str):
+        """Selecciona un paciente por ID al navegar desde Identificación o Historia Clínica."""
+        if not paciente_id:
+            return
+        if hasattr(self, "input_buscar_pac"):
+            self.input_buscar_pac.clear()
+        self._poblar_combo_pacientes()
+        for i in range(self.combo_paciente.count()):
+            d = self.combo_paciente.itemData(i)
+            if isinstance(d, dict) and d.get("id") == paciente_id:
+                self.combo_paciente.setCurrentIndex(i)
+                break
+        self._actualizar_alerta_clinica()
+
+    def _actualizar_alerta_clinica(self):
+        """Muestra alergias/notas de Identificación y Condición IPX de Historia Clínica."""
+        if not hasattr(self, "lbl_alerta_clinica") or self._syncing_combo:
+            return
+        p = self.combo_paciente.currentData()
+        if not isinstance(p, dict):
+            self.lbl_alerta_clinica.setText(
+                "Selecciona un paciente para ver sus alergias, notas y condición clínica (IPX)."
+            )
+            self.lbl_alerta_clinica.setStyleSheet(
+                "background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 7px; "
+                "color: #475569; padding: 7px 10px; font-size: 12px;"
+            )
+            return
+
+        pid = p.get("id", "")
+        ced = (p.get("cedula", "") or "").strip().lower()
+        otros = (p.get("otros_datos", "") or "").strip()
+        hist = next(
+            (
+                h for h in self._historias_cache
+                if (pid and h.get("paciente_id") == pid)
+                or (ced and (h.get("cedula", "") or "").strip().lower() == ced)
+            ),
+            None,
+        )
+        condicion = (hist.get("patologia", "") if hist else "") or "Sin especificar"
+        if otros:
+            self.lbl_alerta_clinica.setText(
+                f"⚠️ Alergias / Notas (Identificación): {otros}   |   🧠 Condición IPX: {condicion}"
+            )
+            self.lbl_alerta_clinica.setStyleSheet(
+                "background: #fefce8; border: 1px solid #fde047; border-radius: 7px; "
+                "color: #854d0e; padding: 7px 10px; font-size: 12px; font-weight: 600;"
+            )
+        else:
+            self.lbl_alerta_clinica.setText(
+                f"🧠 Condición IPX: {condicion}   |   ✅ Sin alergias o alertas registradas en Identificación"
+            )
+            self.lbl_alerta_clinica.setStyleSheet(
+                "background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 7px; "
+                "color: #1e40af; padding: 7px 10px; font-size: 12px; font-weight: 500;"
+            )
+
+    def _ir_a_agendar_control(self):
+        p = self.combo_paciente.currentData()
+        if not isinstance(p, dict) or not p.get("id"):
+            QMessageBox.information(
+                self, "Paciente requerido", "Selecciona un paciente primero para agendarle un control."
+            )
+            return
+        self.agendar_control_requested.emit(p.get("id"))
 
     def _cargar_recetas(self):
         """Carga el historial de recetas desde Firestore o JSON local."""
@@ -714,13 +856,37 @@ class PrescriptionsView(QWidget):
         guardar_o_actualizar_farmaco(farmaco_catalogo_datos)
         self._cargar_catalogo_farmacos()
 
+        fecha_str = self.input_fecha.date().toString("dd/MM/yyyy")
+        estado_trat = self.combo_estado_tratamiento.currentText() if hasattr(self, "combo_estado_tratamiento") else "Activo"
+
+        # Evitar receta duplicada exacta en la misma fecha
+        if not self._receta_actual_id:
+            dup = next(
+                (
+                    r for r in self._recetas_cache
+                    if (paciente_id and r.get("paciente_id") == paciente_id)
+                    and r.get("fecha") == fecha_str
+                    and (r.get("nombre_comercial", "") or "").lower() == comercial.lower()
+                    and (r.get("recetacion_dosis", "") or "").strip().lower() == dosis.lower()
+                ),
+                None,
+            )
+            if dup:
+                QMessageBox.warning(
+                    self,
+                    "Receta duplicada",
+                    f"Ya existe una receta idéntica para {paciente_nombre} el {fecha_str}."
+                )
+                return
+
         # 4. Estructurar Datos de la Receta
         receta_datos = {
             "paciente_id": paciente_id,
             "paciente_nombre": paciente_nombre,
-            "fecha": self.input_fecha.date().toString("dd/MM/yyyy"),
+            "fecha": fecha_str,
             "medico": self.input_medico.text().strip(),
-            "especialidad": self.input_especialidad.text().strip(),
+            "especialidad": self.combo_especialidad.currentText().strip(),
+            "estado_tratamiento": estado_trat,
             "nombre_comercial": comercial,
             "nombre_generico": generico,
             "laboratorio": lab,
@@ -762,6 +928,7 @@ class PrescriptionsView(QWidget):
 
         self._guardar_recetas_local()
         self._poblar_tabla(self._recetas_cache)
+        self.receta_actualizada.emit(receta_datos)
 
         QMessageBox.information(
             self, "✅ Receta Guardada",
@@ -809,7 +976,11 @@ class PrescriptionsView(QWidget):
         if idx >= 0:
             self.combo_paciente.setCurrentIndex(idx)
         else:
-            self.combo_paciente.setEditText(p_nombre)
+            self.combo_paciente.setCurrentIndex(0)
+
+        if hasattr(self, "combo_estado_tratamiento"):
+            idx_est = self.combo_estado_tratamiento.findText(r.get("estado_tratamiento", "Activo"))
+            self.combo_estado_tratamiento.setCurrentIndex(max(0, idx_est))
 
         # Fecha
         f_str = r.get("fecha", "")
@@ -819,7 +990,15 @@ class PrescriptionsView(QWidget):
                 self.input_fecha.setDate(d)
 
         self.input_medico.setText(r.get("medico", ""))
-        self.input_especialidad.setText(r.get("especialidad", ""))
+        esp = (r.get("especialidad", "") or "").strip()
+        if esp:
+            idx_esp = self.combo_especialidad.findText(esp)
+            if idx_esp < 0:
+                self.combo_especialidad.addItem(esp)
+                idx_esp = self.combo_especialidad.count() - 1
+            self.combo_especialidad.setCurrentIndex(idx_esp)
+        else:
+            self.combo_especialidad.setCurrentIndex(0)
 
         # Campos del fármaco
         self.txt_comercial.setText(r.get("nombre_comercial", ""))
@@ -865,6 +1044,7 @@ class PrescriptionsView(QWidget):
             self._guardar_recetas_local()
             self._poblar_tabla(self._recetas_cache)
             self.clear_form()
+            self.receta_actualizada.emit({"id": r_id, "deleted": True})
             QMessageBox.information(self, "Eliminado", "La receta ha sido eliminada.")
 
     # ── Botones "Buscar" y "Muestras todo" ────────────────────────
@@ -947,7 +1127,7 @@ class PrescriptionsView(QWidget):
                     "paciente_nombre": paciente_nombre,
                     "fecha": self.input_fecha.date().toString("dd/MM/yyyy"),
                     "medico": self.input_medico.text().strip() or "Dr(a). Tratante",
-                    "especialidad": self.input_especialidad.text().strip() or "Medicina",
+                    "especialidad": self.combo_especialidad.currentText().strip() or "Psiquiatría",
                     "instrucciones": instrucciones_completas,
                     "medicamentos": [medicamento_item],
                 })
@@ -960,8 +1140,14 @@ class PrescriptionsView(QWidget):
     def clear_form(self):
         """Limpia todos los campos para una nueva receta en blanco."""
         self._receta_actual_id = None
+        if hasattr(self, "input_buscar_pac"):
+            self.input_buscar_pac.clear()
         self.combo_paciente.setCurrentIndex(0)
         self.input_fecha.setDate(QDate.currentDate())
+        if hasattr(self, "combo_estado_tratamiento"):
+            self.combo_estado_tratamiento.setCurrentIndex(0)
+        if hasattr(self, "combo_especialidad"):
+            self.combo_especialidad.setCurrentIndex(0)
         self.txt_comercial.clear()
         self.txt_generico.clear()
         self.txt_laboratorio.clear()
@@ -972,6 +1158,7 @@ class PrescriptionsView(QWidget):
         self.txt_interacciones.clear()
         self.lbl_status.setText("Nueva Receta en Blanco")
         self.btn_guardar.setText("💾  Guardar Receta")
+        self._actualizar_alerta_clinica()
 
     def focus_new_form(self):
         """Acceso directo desde menú superior."""

@@ -1,6 +1,6 @@
 {
-  "version": "1.1.0",
-  "release_date": "2026-11-21",
-  "download_url": "https://github.com/sanrey393/registro_clinico/releases/download/v1.1.0/SistemaClinico.zip",
-  "notes": "Version 1.1.0 - Aislamiento estricto de sesiones por usuario (multi-tenant), modulo de respaldo y restauracion, notificaciones de actualizacion automatica, catalogo farmacologico, recetas en PDF, facturacion y agenda de citas."
+  "version": "2.0.0",
+  "release_date": "2026-11-24",
+  "download_url": "https://github.com/sanrey393/registro_clinico/releases/download/v2.0.0/SistemaClinico.zip",
+  "notes": "PSIQUE v2.0.0 - Rediseño visual completo (Tema Claro/Oscuro e iconos SVG), sincronizacion bidireccional Identificacion <-> Historia Clinica (1-a-1) <-> Agenda <-> Bitacora <-> Farmacos, campos academicos (PNF, Trayecto, Seccion, Ano), Condicion/IPX personalizable, SmartDateEdit DD/MM/AAAA y validaciones anti-duplicados."
 }

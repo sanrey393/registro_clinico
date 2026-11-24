@@ -22,7 +22,15 @@ from PyQt6.QtCore import QTimer, QSettings, QThread, pyqtSignal, QEvent, QDateTi
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Sistema Clínico - Psicología")
+        self.setWindowTitle("PSIQUE — Sistema de Gestión Clínico Psicológica")
+        import os
+        from PyQt6.QtGui import QIcon
+        from core.app_paths import resource_path
+        for icon_rel in ("data/app_icon.ico", "data/app_icon.png"):
+            icon_p = resource_path(icon_rel)
+            if os.path.exists(icon_p):
+                self.setWindowIcon(QIcon(icon_p))
+                break
         self.resize(1200, 768)
 
         # Configurar temas
@@ -56,16 +64,57 @@ class MainWindow(QMainWindow):
         self.activity_timer.timeout.connect(self._check_inactivity)
         self.activity_timer.start(60000)
 
+    def _build_palette(self, dark: bool):
+        from PyQt6.QtGui import QPalette, QColor
+        pal = QPalette()
+        if dark:
+            pal.setColor(QPalette.ColorRole.Window, QColor("#0b1316"))
+            pal.setColor(QPalette.ColorRole.WindowText, QColor("#e2e8f0"))
+            pal.setColor(QPalette.ColorRole.Base, QColor("#131f24"))
+            pal.setColor(QPalette.ColorRole.AlternateBase, QColor("#0f191d"))
+            pal.setColor(QPalette.ColorRole.ToolTipBase, QColor("#131f24"))
+            pal.setColor(QPalette.ColorRole.ToolTipText, QColor("#f8fafc"))
+            pal.setColor(QPalette.ColorRole.Text, QColor("#f1f5f9"))
+            pal.setColor(QPalette.ColorRole.PlaceholderText, QColor("#64748b"))
+            pal.setColor(QPalette.ColorRole.Button, QColor("#192930"))
+            pal.setColor(QPalette.ColorRole.ButtonText, QColor("#e2e8f0"))
+            pal.setColor(QPalette.ColorRole.Highlight, QColor("#2a72de"))
+            pal.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+        else:
+            pal.setColor(QPalette.ColorRole.Window, QColor("#f6f7f5"))
+            pal.setColor(QPalette.ColorRole.WindowText, QColor("#1e293b"))
+            pal.setColor(QPalette.ColorRole.Base, QColor("#ffffff"))
+            pal.setColor(QPalette.ColorRole.AlternateBase, QColor("#f8fafc"))
+            pal.setColor(QPalette.ColorRole.ToolTipBase, QColor("#ffffff"))
+            pal.setColor(QPalette.ColorRole.ToolTipText, QColor("#0f172a"))
+            pal.setColor(QPalette.ColorRole.Text, QColor("#0f172a"))
+            pal.setColor(QPalette.ColorRole.PlaceholderText, QColor("#94a3b8"))
+            pal.setColor(QPalette.ColorRole.Button, QColor("#f8fafc"))
+            pal.setColor(QPalette.ColorRole.ButtonText, QColor("#1e293b"))
+            pal.setColor(QPalette.ColorRole.Highlight, QColor("#2a72de"))
+            pal.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+        return pal
+
     def _load_theme(self):
         import os
+        from PyQt6.QtWidgets import QApplication
         from core.app_paths import resource_path
+        app = QApplication.instance()
+        if app is not None:
+            app.setPalette(self._build_palette(self._is_dark_mode))
         theme_rel = "styles/theme_dark.qss" if self._is_dark_mode else "styles/theme_light.qss"
         theme_file = resource_path(theme_rel)
         if os.path.exists(theme_file):
             with open(theme_file, "r", encoding="utf-8") as f:
-                self.setStyleSheet(f.read())
+                qss = f.read()
+            if app is not None:
+                app.setStyleSheet(qss)
+            else:
+                self.setStyleSheet(qss)
         else:
             print(f"[WARN] No se encontró {theme_file}")
+        if hasattr(self, "dashboard_view") and hasattr(self.dashboard_view, "set_theme_mode"):
+            self.dashboard_view.set_theme_mode(self._is_dark_mode)
 
     def toggle_theme(self):
         self._is_dark_mode = not self._is_dark_mode
@@ -501,7 +550,9 @@ class MainWindow(QMainWindow):
         dlg.exec()
 
     def closeEvent(self, event):
-        """Al cerrar la aplicación, ejecuta el respaldo automático si está configurado."""
+        """Al cerrar la aplicación, ejecuta el respaldo automático y detiene hilos pendientes."""
+        if hasattr(self, "update_manager"):
+            self.update_manager.stop()
         try:
             from core.backup_manager import BackupManager
             BackupManager.verificar_y_ejecutar_auto_backup()
@@ -639,8 +690,7 @@ class MainWindow(QMainWindow):
             dlg_prompt = UpdatePromptDialog(self, version, url, notes)
             if dlg_prompt.exec() == QDialog.DialogCode.Accepted:
                 from ui.dialogs.update_dialog import UpdateDialog
-                dlg = UpdateDialog(self, version, url, notes)
-                dlg._start_download()
+                dlg = UpdateDialog(self, version, url, notes, auto_start=True)
                 dlg.exec()
             return
 
@@ -657,8 +707,7 @@ class MainWindow(QMainWindow):
             dlg_prompt = UpdatePromptDialog(self, version, url, notes)
             if dlg_prompt.exec() == QDialog.DialogCode.Accepted:
                 from ui.dialogs.update_dialog import UpdateDialog
-                dlg = UpdateDialog(self, version, url, notes)
-                dlg._start_download()
+                dlg = UpdateDialog(self, version, url, notes, auto_start=True)
                 dlg.exec()
 
         def _on_up_to_date(curr_version):
@@ -674,8 +723,9 @@ class MainWindow(QMainWindow):
                 )
 
         def _on_error(err):
+            from core.update_manager import CURRENT_VERSION
             if hasattr(self, "dashboard_view") and not getattr(self, "_pending_update", None):
-                self.dashboard_view.set_system_up_to_date("1.0.0")
+                self.dashboard_view.set_system_up_to_date(CURRENT_VERSION)
             if not silent:
                 QMessageBox.warning(
                     self,
@@ -989,7 +1039,15 @@ class MainWindow(QMainWindow):
         self.settings.remove("user_display_name")
         self.settings.remove("user_email")
         self.settings.remove("user_uid")
-        self.setWindowTitle("Sistema Clínico - Psicología")
+        self.setWindowTitle("PSIQUE — Sistema de Gestión Clínico Psicológica")
+        import os
+        from PyQt6.QtGui import QIcon
+        from core.app_paths import resource_path
+        for icon_rel in ("data/app_icon.ico", "data/app_icon.png"):
+            icon_p = resource_path(icon_rel)
+            if os.path.exists(icon_p):
+                self.setWindowIcon(QIcon(icon_p))
+                break
         self.login_view.clear_error()
         self.stacked_widget.setCurrentIndex(IDX_LOGIN)
         # Ocultar la barra de menú al cerrar sesión
