@@ -1,6 +1,11 @@
 import os
-import firebase_admin
-from firebase_admin import credentials, firestore
+try:
+    import firebase_admin
+    from firebase_admin import credentials, firestore
+except ImportError:
+    firebase_admin = None
+    credentials = None
+    firestore = None
 from core.app_paths import app_dir, load_app_env
 
 load_app_env()
@@ -39,7 +44,7 @@ class FirebaseManager:
         self._current_user_id = None
         service_account_path = os.path.join(app_dir(), "firebase_service_account.json")
 
-        if os.path.exists(service_account_path):
+        if firebase_admin is not None and os.path.exists(service_account_path):
             try:
                 if not firebase_admin._apps:
                     cred = credentials.Certificate(service_account_path)

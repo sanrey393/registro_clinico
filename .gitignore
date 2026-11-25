@@ -13,6 +13,7 @@ keygen.py
 # Entornos virtuales de Python
 venv/
 .venv/
+.venv32/
 env/
 ENV/
 env.bak/

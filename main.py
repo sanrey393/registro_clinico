@@ -1,5 +1,6 @@
 import sys
 import os
+import core.qt5_compat  # noqa: F401 - Compatibilidad PyQt5 para sistemas 32 bits
 from PyQt6.QtWidgets import QApplication
 from ui.main_window import MainWindow
 

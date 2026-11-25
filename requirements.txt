@@ -1,15 +1,14 @@
-# Sistema de Registro Clínico y Gestión Médica - Dependencias
+# Sistema de Registro Clínico PSIQUE - Dependencias 32 bits (PyQt5 + Firestore REST)
 
-# Interfaz Gráfica
-PyQt6>=6.6.0
+# Interfaz Gráfica compatible con Windows 32 bits y Linux 32 bits
+PyQt5>=5.15.9
 
-# Base de datos y Autenticación en la Nube (Firebase)
-firebase-admin>=6.4.0
+# Autenticación en la Nube (Firebase REST)
 Pyrebase4>=4.8.0
 python-dotenv>=1.0.0
 
 # Seguridad y Criptografía (Licenciamiento y Tokens)
-cryptography>=42.0.0
+cryptography>=41.0.0,<45.0.0
 
 # Generación de Reportes y Recetas Médicas en PDF
 reportlab>=4.0.0
@@ -17,5 +16,5 @@ reportlab>=4.0.0
 # Red y Peticiones HTTP
 requests>=2.31.0
 
-# Herramientas de Compilación (Opcional para desarrollo)
+# Herramientas de Compilación
 pyinstaller>=6.0.0
