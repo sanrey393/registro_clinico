@@ -8,13 +8,15 @@ from database.local_cache import LocalCache
 load_app_env()
 
 # Configuración Firebase para el cliente (pyrebase4)
+# Nota: Las claves Web de Firebase son públicas por diseño; la seguridad
+# la garantizan las reglas de Firestore (firestore.rules) por usuario autenticado.
 firebase_config = {
-    "apiKey":            os.environ.get("FIREBASE_API_KEY"),
-    "authDomain":        os.environ.get("FIREBASE_AUTH_DOMAIN"),
-    "projectId":         os.environ.get("FIREBASE_PROJECT_ID"),
-    "storageBucket":     os.environ.get("FIREBASE_STORAGE_BUCKET"),
-    "messagingSenderId": os.environ.get("FIREBASE_MESSAGING_SENDER_ID"),
-    "appId":             os.environ.get("FIREBASE_APP_ID"),
+    "apiKey":            os.environ.get("FIREBASE_API_KEY") or "AIzaSyCKpnkOaugvwa8OuNMQiKIQUKRsSyYvzjY",
+    "authDomain":        os.environ.get("FIREBASE_AUTH_DOMAIN") or "registro-clinico-8276f.firebaseapp.com",
+    "projectId":         os.environ.get("FIREBASE_PROJECT_ID") or "registro-clinico-8276f",
+    "storageBucket":     os.environ.get("FIREBASE_STORAGE_BUCKET") or "registro-clinico-8276f.firebasestorage.app",
+    "messagingSenderId": os.environ.get("FIREBASE_MESSAGING_SENDER_ID") or "786521507291",
+    "appId":             os.environ.get("FIREBASE_APP_ID") or "1:786521507291:web:79587a0c3077f8fd7513fe",
     "databaseURL":       os.environ.get("FIREBASE_DATABASE_URL", ""),
 }
 
@@ -63,6 +65,12 @@ class AuthManager:
         if not self._current_user:
             return ""
         return self._current_user.get("email", "")
+
+    def get_id_token(self) -> str:
+        """Devuelve el idToken de Firebase del usuario autenticado para consultas REST."""
+        if not self._current_user:
+            return ""
+        return self._current_user.get("idToken", "") or ""
 
     def get_uid(self):
         """UID de Firebase del usuario autenticado."""

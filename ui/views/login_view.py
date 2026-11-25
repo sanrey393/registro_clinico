@@ -429,6 +429,15 @@ class LoginView(QWidget):
         """)
         right_layout.addWidget(self.google_button)
 
+        has_google_oauth = bool(
+            os.environ.get("GOOGLE_CLIENT_ID") and os.environ.get("GOOGLE_CLIENT_SECRET")
+        )
+        if not has_google_oauth:
+            line_left.setVisible(False)
+            divider_label.setVisible(False)
+            line_right.setVisible(False)
+            self.google_button.setVisible(False)
+
         right_layout.addSpacing(6)
 
         # Enlace a Registro

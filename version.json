@@ -1,6 +1,6 @@
 {
-  "version": "2.0.0",
+  "version": "2.1.0",
   "release_date": "2026-11-24",
-  "download_url": "https://github.com/sanrey393/registro_clinico/releases/download/v2.0.0/SistemaClinico.zip",
-  "notes": "PSIQUE v2.0.0 - Rediseño visual completo (Tema Claro/Oscuro e iconos SVG), sincronizacion bidireccional Identificacion <-> Historia Clinica (1-a-1) <-> Agenda <-> Bitacora <-> Farmacos, campos academicos (PNF, Trayecto, Seccion, Ano), Condicion/IPX personalizable, SmartDateEdit DD/MM/AAAA y validaciones anti-duplicados."
+  "download_url": "https://github.com/sanrey393/registro_clinico/releases/download/v2.1.0/SistemaClinico.zip",
+  "notes": "PSIQUE v2.1.0 - Conexión directa a Firestore REST autenticada con token de usuario (sin requerir firebase_service_account.json ni .env en instalaciones nuevas), respaldo y restauración completos Firestore+SQLite, PDFs rediseñados (Historias, Fármacos, Expediente, Listados y Agenda) e instalador universal Linux."
 }

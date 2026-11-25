@@ -45,13 +45,28 @@ class FirebaseManager:
                     cred = credentials.Certificate(service_account_path)
                     firebase_admin.initialize_app(cred)
                 self._db = firestore.client()
-                print("[DEBUG] Firestore inicializado correctamente.")
+                print("[DEBUG] Firestore Admin inicializado correctamente.")
             except Exception as e:
                 print(f"[WARN] No se pudo inicializar Firestore Admin: {e}")
-        else:
-            print("[WARN] firebase_service_account.json no encontrado. Firestore Admin no disponible.")
+
+        if self._db is None:
+            try:
+                from database.firestore_rest import FirestoreRestClient
+                project_id = os.environ.get("FIREBASE_PROJECT_ID") or "registro-clinico-8276f"
+                self._db = FirestoreRestClient(project_id, token_provider=self._resolve_id_token)
+                print("[DEBUG] Firestore REST Client inicializado (sin service account local).")
+            except Exception as e_rest:
+                print(f"[WARN] No se pudo inicializar Firestore REST Client: {e_rest}")
 
         self._initialized = True
+
+    def _resolve_id_token(self) -> str:
+        """Obtiene el idToken actual desde AuthManager para autenticar peticiones REST."""
+        try:
+            from core.auth_manager import AuthManager
+            return AuthManager().get_id_token()
+        except Exception:
+            return ""
 
     def set_current_user_id(self, uid: str):
         """Fija el UID del usuario médico actualmente autenticado para aislar sus datos."""

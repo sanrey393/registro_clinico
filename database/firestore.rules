@@ -119,5 +119,10 @@ service cloud.firestore {
       allow create: if isAuthenticated() && request.resource.data.user_id == request.auth.uid;
       allow update, delete: if isAuthenticated() && (isOwner(resource) || isAdmin());
     }
+
+    // ── Licencias de Equipo ───────────────────────────────────
+    match /licencias/{machineId} {
+      allow read, create, update: if isAuthenticated();
+    }
   }
 }
