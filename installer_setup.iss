@@ -4,7 +4,7 @@
 ; Requiere Inno Setup 6+ (https://jrsoftware.org/isdl.php)
 
 #define MyAppName      "PSIQUE - Sistema de Gestion Clinico Psicologica"
-#define MyAppVersion   "2.1.0"
+#define MyAppVersion   "2.2.0"
 #define MyAppPublisher "Sanrey Systems"
 #define MyAppExeName   "SistemaClinico.exe"
 #define MyAppURL       "https://github.com/sanrey393/registro_clinico"
@@ -22,7 +22,7 @@ DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 ; Carpeta de salida del instalador
 OutputDir=Output
-OutputBaseFilename=Instalador_PSIQUE_v2.1.0
+OutputBaseFilename=Instalador_PSIQUE_v2.2.0
 SetupIconFile=data\app_icon.ico
 ; Compresion maxima
 Compression=lzma2

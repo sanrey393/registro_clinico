@@ -7,7 +7,7 @@ import urllib.request
 from PyQt6.QtCore import QThread, pyqtSignal, QObject
 from core.app_paths import app_dir, resource_path
 
-FALLBACK_VERSION = "2.1.0"
+FALLBACK_VERSION = "2.2.0"
 VERSION_JSON_URL = "https://raw.githubusercontent.com/sanrey393/registro_clinico/main/version.json"
 GITHUB_RELEASES_API = "https://api.github.com/repos/sanrey393/registro_clinico/releases/latest"
 

@@ -13,10 +13,17 @@ keygen.py
 # Entornos virtuales de Python
 venv/
 .venv/
+.venv32/
 env/
 ENV/
 env.bak/
 venv.bak/
+
+# Web (Next.js / Node)
+web/node_modules/
+web/.next/
+web/out/
+web/.env*
 
 # Bytecode y caché de Python
 __pycache__/

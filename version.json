@@ -1,6 +1,6 @@
 {
-  "version": "2.1.0",
-  "release_date": "2026-11-24",
-  "download_url": "https://github.com/sanrey393/registro_clinico/releases/download/v2.1.0/SistemaClinico.zip",
-  "notes": "PSIQUE v2.1.0 - Conexión directa a Firestore REST autenticada con token de usuario (sin requerir firebase_service_account.json ni .env en instalaciones nuevas), respaldo y restauración completos Firestore+SQLite, PDFs rediseñados (Historias, Fármacos, Expediente, Listados y Agenda) e instalador universal Linux."
+  "version": "2.2.0",
+  "release_date": "2026-11-26",
+  "download_url": "https://github.com/sanrey393/registro_clinico/releases/download/v2.2.0/SistemaClinico.zip",
+  "notes": "PSIQUE v2.2.0 - Acceso directo sin activación de licencia por hardware/Firebase (cualquier usuario registrado en Firebase Auth o Google puede ingresar libremente), versión web completa (api/ FastAPI + web/ Next.js) sincronizada con Firestore y ReportLab."
 }
